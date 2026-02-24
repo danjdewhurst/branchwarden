@@ -169,9 +169,21 @@ Examples:
 
 ## CI
 
-GitHub Actions workflow runs on:
-- pushes to `main`
-- pull requests to `main`
+GitHub Actions workflows:
+- CI on pushes/PRs to `main`
+- Reusable enforcement workflow: `.github/workflows/branchwarden-reusable-enforce.yml`
+- Example scheduled enforcement: `.github/workflows/branchwarden-scheduled-enforce.yml`
+
+Reusable workflow usage (from another workflow):
+
+```yaml
+jobs:
+  enforce:
+    uses: ./.github/workflows/branchwarden-reusable-enforce.yml
+    with:
+      repo: ${{ github.repository }}
+      base: main
+```
 
 Checks:
 - shell syntax check (`bash -n`)
@@ -188,7 +200,7 @@ Checks:
 - [x] PR quality gates (labels, linked issue, reviewer minimums)
 - [x] Improved dry-run planner output (`--plan text|json`)
 - [x] Audit report export (`--output markdown|json|sarif`)
-- [ ] Scheduled enforcement via reusable GitHub Action template
+- [x] Scheduled enforcement via reusable GitHub Action template
 
 ## License
 

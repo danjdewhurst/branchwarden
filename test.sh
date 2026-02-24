@@ -159,6 +159,11 @@ CFG
   )
 }
 
+test_workflow_templates_exist() {
+  [[ -f "$ROOT_DIR/.github/workflows/branchwarden-reusable-enforce.yml" ]] || fail "missing reusable enforce workflow"
+  [[ -f "$ROOT_DIR/.github/workflows/branchwarden-scheduled-enforce.yml" ]] || fail "missing scheduled enforce workflow"
+}
+
 echo "Running tests..."
 test_validation_errors
 test_status_and_clean_flow
@@ -167,4 +172,5 @@ test_apply_help
 test_bulk_help
 test_pr_gates_help
 test_presets_and_config
+test_workflow_templates_exist
 echo "All tests passed."

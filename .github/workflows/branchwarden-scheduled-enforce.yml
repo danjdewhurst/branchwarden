@@ -1,0 +1,13 @@
+name: branchwarden scheduled enforce
+
+on:
+  schedule:
+    - cron: '17 3 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  enforce-main:
+    uses: ./.github/workflows/branchwarden-reusable-enforce.yml
+    with:
+      repo: ${{ github.repository }}
+      base: main

@@ -1,0 +1,29 @@
+name: branchwarden reusable enforce
+
+on:
+  workflow_call:
+    inputs:
+      repo:
+        description: owner/name repo to enforce
+        required: true
+        type: string
+      base:
+        description: branch name
+        required: false
+        default: main
+        type: string
+
+jobs:
+  enforce:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      administration: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run branchwarden apply --fix
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          chmod +x ./branchwarden
+          ./branchwarden apply --repo "${{ inputs.repo }}" --base "${{ inputs.base }}" --fix
