@@ -40,6 +40,12 @@ setup_repo() {
     git checkout main >/dev/null
     git merge --no-ff feature/old -m "merge feature" >/dev/null
     git push origin main >/dev/null
+
+    git checkout -b release/1.0 >/dev/null
+    echo "release" > release.txt
+    git add release.txt
+    git commit -m "release prep" >/dev/null
+    git checkout main >/dev/null
   )
 
   echo "$repo"
@@ -53,6 +59,13 @@ test_validation_errors() {
   set -e
   [[ $rc -ne 0 ]] || fail "expected stale --days 0 to fail"
   assert_contains "$out" "--days must be > 0"
+
+  set +e
+  out="$($TOOL clean --plan yaml 2>&1)"
+  rc=$?
+  set -e
+  [[ $rc -ne 0 ]] || fail "expected clean --plan yaml to fail"
+  assert_contains "$out" "--plan must be one of: text, json"
 }
 
 test_status_and_clean_flow() {
@@ -71,6 +84,11 @@ test_status_and_clean_flow() {
     assert_contains "$dry_out" "Dry run"
     git branch --list feature/old | grep -q "feature/old" || fail "branch should still exist after dry run"
 
+    local plan_json
+    plan_json="$($TOOL clean --mode merged --plan json)"
+    assert_contains "$plan_json" '"dryRun":true'
+    assert_contains "$plan_json" '"feature/old"'
+
     local clean_out
     clean_out="$($TOOL clean --mode merged --yes)"
     assert_contains "$clean_out" "Deleted feature/old"
@@ -81,7 +99,41 @@ test_status_and_clean_flow() {
   )
 }
 
+test_audit_help() {
+  local out
+  out="$($TOOL audit --help)"
+  assert_contains "$out" "Usage: branchwarden audit"
+}
+
+test_presets_and_config() {
+  local repo
+  repo="$(setup_repo)"
+  (
+    cd "$repo"
+
+    local strict_out
+    strict_out="$($TOOL stale --days 1 --preset strict)"
+    if grep -Fq "release/1.0" <<<"$strict_out"; then
+      fail "release/1.0 should be protected by strict preset"
+    fi
+
+    cat > branchwarden.config <<'CFG'
+PRESET=solo-dev
+PROTECT=release/*
+MODE=merged
+CFG
+
+    local config_out
+    config_out="$($TOOL clean --plan json)"
+    if grep -Fq '"release/1.0"' <<<"$config_out"; then
+      fail "release/1.0 should be protected by config pattern"
+    fi
+  )
+}
+
 echo "Running tests..."
 test_validation_errors
 test_status_and_clean_flow
+test_audit_help
+test_presets_and_config
 echo "All tests passed."
