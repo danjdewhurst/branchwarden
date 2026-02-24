@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TOOL="$ROOT_DIR/branchwarden"
+UPDATE_FORMULA_SCRIPT="$ROOT_DIR/scripts/update-formula.sh"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 assert_contains() { grep -Fq -- "$2" <<<"$1" || fail "expected output to contain '$2'"; }
@@ -144,10 +145,57 @@ test_init_and_completion() {
   local fish_comp; fish_comp="$($TOOL completion fish)"; assert_contains "$fish_comp" "complete -c"
 }
 
+test_update_formula_script() {
+  local tmpdir formula out rc
+  tmpdir="$(mktemp -d)"
+  formula="$tmpdir/branchwarden.rb"
+  cp "$ROOT_DIR/Formula/branchwarden.rb" "$formula"
+
+  set +e
+  out="$($UPDATE_FORMULA_SCRIPT 2>&1)"
+  rc=$?
+  set -e
+  [[ $rc -ne 0 ]] || fail "expected missing arg to fail"
+  assert_contains "$out" "missing required tag argument"
+
+  set +e
+  out="$($UPDATE_FORMULA_SCRIPT v1.2 2>&1)"
+  rc=$?
+  set -e
+  [[ $rc -ne 0 ]] || fail "expected invalid tag to fail"
+  assert_contains "$out" "tag must match vX.Y.Z"
+
+  set +e
+  out="$($UPDATE_FORMULA_SCRIPT --sha256 deadbeef v1.2.3 2>&1)"
+  rc=$?
+  set -e
+  [[ $rc -ne 0 ]] || fail "expected invalid sha override to fail"
+  assert_contains "$out" "--sha256 must be a 64-character lowercase hex string"
+
+  local sha1 sha2
+  sha1="1111111111111111111111111111111111111111111111111111111111111111"
+  sha2="2222222222222222222222222222222222222222222222222222222222222222"
+
+  out="$(FORMULA_FILE="$formula" "$UPDATE_FORMULA_SCRIPT" --dry-run --sha256 "$sha1" v9.9.9)"
+  assert_contains "$out" "Would update formula"
+  assert_contains "$out" "url \"https://github.com/danjdewhurst/branchwarden/archive/refs/tags/v9.9.9.tar.gz\""
+  assert_contains "$out" "sha256 \"$sha1\""
+  if grep -Fq "v9.9.9" "$formula"; then fail "dry-run should not modify formula"; fi
+
+  out="$(FORMULA_FILE="$formula" "$UPDATE_FORMULA_SCRIPT" --sha256 "$sha2" v8.8.8)"
+  assert_contains "$out" "Updated $formula for v8.8.8"
+  grep -Fq 'url "https://github.com/danjdewhurst/branchwarden/archive/refs/tags/v8.8.8.tar.gz"' "$formula" || fail "formula url not updated"
+  grep -Fq "sha256 \"$sha2\"" "$formula" || fail "formula sha not updated"
+
+  out="$(FORMULA_FILE="$formula" "$UPDATE_FORMULA_SCRIPT" --sha256 "$sha2" v8.8.8)"
+  assert_contains "$out" "Formula already up to date for v8.8.8"
+}
+
 echo "Running tests..."
 test_validation_errors
 test_status_and_clean_flow
 test_presets_and_config
 test_mocked_github_commands
 test_init_and_completion
+test_update_formula_script
 echo "All tests passed."

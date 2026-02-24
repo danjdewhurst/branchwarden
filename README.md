@@ -34,6 +34,20 @@ scripts/homebrew-tap-bootstrap.sh /path/to/homebrew-tools
 
 Formula source in this repo: `Formula/branchwarden.rb`
 
+On release tags, formula updates are automated:
+- Push a tag like `v0.3.0`
+- GitHub Actions runs `scripts/update-formula.sh <tag>`
+- `Formula/branchwarden.rb` is updated with the tag tarball URL + SHA256
+- CI commits the change back to `main` (or skips if already current)
+
+Manual maintainer flow (local):
+
+```bash
+scripts/update-formula.sh v0.3.0
+# optional preview/no-write:
+scripts/update-formula.sh --dry-run --sha256 <64-char-lowercase-hex> v0.3.0
+```
+
 ### Install script path
 
 If your team mirrors install scripts, document a pinned script path such as:
@@ -125,6 +139,7 @@ Checks:
 - shell syntax check (`bash -n`)
 - end-to-end test script (`./test.sh`)
 - integration-style GitHub command tests via mock mode (`BRANCHWARDEN_MOCK_DIR`)
+- release-tag workflow updates Homebrew formula (`.github/workflows/homebrew-formula-release.yml`)
 
 ## Docs
 
