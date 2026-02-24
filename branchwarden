@@ -14,6 +14,7 @@ Subcommands:
   clean    Delete safe branches (merged/gone) with dry-run by default
   audit    Detect GitHub branch-protection drift vs desired policy
   apply    Apply desired branch-protection policy (use --fix to enforce)
+  bulk     Run audit/apply across org repos filtered by topic/pattern
 
 Run 'branchwarden <subcommand> --help' for details.
 TXT
@@ -29,6 +30,20 @@ Flags:
   --fix                 apply changes via GitHub API (default: drift preview only)
                         (updates classic branch protection and bootstraps ruleset when missing)
   --config <path>       config file path (default: ./branchwarden.config)
+TXT
+}
+
+bulk_help() {
+  cat <<'TXT'
+Usage: branchwarden bulk --org <org> [--topic <topic>] [--pattern <regex>] [--action audit|apply] [--base <branch>] [--fix]
+
+Flags:
+  --org <org>           GitHub org to scan
+  --topic <topic>       required repo topic (repeatable)
+  --pattern <regex>     regex against repo name (default: .*)
+  --action <mode>       audit or apply (default: audit)
+  --base <branch>       branch (default: main)
+  --fix                 when --action apply, enforce changes
 TXT
 }
 
@@ -799,6 +814,66 @@ PY
   echo "Applied policy to ${repo}:${base} (rulesets matching branch: ${rulesets_count})"
 }
 
+cmd_bulk() {
+  local org=""
+  local pattern=".*"
+  local action="audit"
+  local base="main"
+  local do_fix="false"
+  local topics=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --org) shift; org="$1" ;;
+      --topic) shift; topics+=("$1") ;;
+      --pattern) shift; pattern="$1" ;;
+      --action) shift; action="$1" ;;
+      --base) shift; base="$1" ;;
+      --fix) do_fix="true" ;;
+      --help|-h) bulk_help; exit 0 ;;
+      *) echo "error: unknown flag for bulk: $1" >&2; bulk_help >&2; exit 1 ;;
+    esac
+    shift
+  done
+
+  [[ -n "$org" ]] || { echo "error: --org is required" >&2; exit 1; }
+  [[ "$action" == "audit" || "$action" == "apply" ]] || { echo "error: --action must be audit|apply" >&2; exit 1; }
+
+  local repos_json
+  repos_json="$(gh api "orgs/${org}/repos" --paginate)"
+  local repo_lines
+  repo_lines="$(python3 - <<'PY' "$repos_json" "$pattern" "${topics[*]}"
+import json, re, sys
+rows = json.loads(sys.argv[1])
+pattern = re.compile(sys.argv[2])
+topics = [t for t in sys.argv[3].split() if t]
+for r in rows:
+    name = r.get('name','')
+    if not pattern.search(name):
+        continue
+    rt = set(r.get('topics') or [])
+    if topics and any(t not in rt for t in topics):
+        continue
+    print(r.get('full_name'))
+PY
+)"
+
+  [[ -n "$repo_lines" ]] || { echo "No repos matched filters."; return; }
+  while IFS= read -r repo; do
+    [[ -z "$repo" ]] && continue
+    echo "==> ${repo}"
+    if [[ "$action" == "audit" ]]; then
+      "$0" audit --repo "$repo" --base "$base" || true
+    else
+      if [[ "$do_fix" == "true" ]]; then
+        "$0" apply --repo "$repo" --base "$base" --fix || true
+      else
+        "$0" apply --repo "$repo" --base "$base" || true
+      fi
+    fi
+  done <<<"$repo_lines"
+}
+
 main() {
   if [[ $# -lt 1 ]]; then
     usage
@@ -829,6 +904,9 @@ main() {
     apply)
       ensure_git_repo
       cmd_apply "$@"
+      ;;
+    bulk)
+      cmd_bulk "$@"
       ;;
     *)
       echo "error: unknown subcommand '$sub'" >&2

@@ -98,6 +98,15 @@ branchwarden apply --repo danjdewhurst/branchwarden --base main
 branchwarden apply --repo danjdewhurst/branchwarden --base main --fix
 ```
 
+### 6) `bulk`
+
+Audit or enforce policy across organization repos filtered by topic/pattern:
+
+```bash
+branchwarden bulk --org your-org --topic platform --pattern '^api-' --action audit
+branchwarden bulk --org your-org --topic platform --pattern '^api-' --action apply --fix
+```
+
 Defaults expect:
 - required check: `CI / test`
 - required approvals: `1`
@@ -164,7 +173,7 @@ Checks:
 - [x] Drift detection (`audit`) against desired policy and live repo state
 - [x] Auto-fix mode (`apply --fix`) to enforce policy quickly
 - [x] GitHub Rulesets support (alongside classic branch protection)
-- [ ] Org/bulk mode for repos by topic/pattern
+- [x] Org/bulk mode for repos by topic/pattern
 - [ ] PR quality gates (labels, linked issue, reviewer minimums)
 - [x] Improved dry-run planner output (`--plan text|json`)
 - [ ] Audit report export (`--output markdown|json|sarif`)
