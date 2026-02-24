@@ -104,6 +104,19 @@ Checks:
 - shell syntax check (`bash -n`)
 - end-to-end test script (`./test.sh`)
 
+## Roadmap
+
+- [ ] Protected-branch presets (`strict`, `balanced`, `solo-dev`) and custom protection patterns
+- [ ] Config file support (`branchwarden.config`) for team policy defaults
+- [ ] Drift detection (`audit`) against desired policy and live repo state
+- [ ] Auto-fix mode (`apply --fix`) to enforce policy quickly
+- [ ] GitHub Rulesets support (alongside classic branch protection)
+- [ ] Org/bulk mode for repos by topic/pattern
+- [ ] PR quality gates (labels, linked issue, reviewer minimums)
+- [ ] Improved dry-run planner output (`--plan text|json`)
+- [ ] Audit report export (`--output markdown|json|sarif`)
+- [ ] Scheduled enforcement via reusable GitHub Action template
+
 ## License
 
 MIT — see [LICENSE](./LICENSE)
