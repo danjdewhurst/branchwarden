@@ -107,6 +107,15 @@ branchwarden bulk --org your-org --topic platform --pattern '^api-' --action aud
 branchwarden bulk --org your-org --topic platform --pattern '^api-' --action apply --fix
 ```
 
+### 7) `pr-gates`
+
+Validate pull request quality gates:
+
+```bash
+branchwarden pr-gates --repo danjdewhurst/branchwarden --pr 42 \
+  --require-label ready --require-linked-issue --min-reviewers 2
+```
+
 Defaults expect:
 - required check: `CI / test`
 - required approvals: `1`
@@ -174,7 +183,7 @@ Checks:
 - [x] Auto-fix mode (`apply --fix`) to enforce policy quickly
 - [x] GitHub Rulesets support (alongside classic branch protection)
 - [x] Org/bulk mode for repos by topic/pattern
-- [ ] PR quality gates (labels, linked issue, reviewer minimums)
+- [x] PR quality gates (labels, linked issue, reviewer minimums)
 - [x] Improved dry-run planner output (`--plan text|json`)
 - [ ] Audit report export (`--output markdown|json|sarif`)
 - [ ] Scheduled enforcement via reusable GitHub Action template

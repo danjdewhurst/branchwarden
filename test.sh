@@ -119,6 +119,13 @@ test_bulk_help() {
   assert_contains "$out" "--org"
 }
 
+test_pr_gates_help() {
+  local out
+  out="$($TOOL pr-gates --help)"
+  assert_contains "$out" "Usage: branchwarden pr-gates"
+  assert_contains "$out" "--min-reviewers"
+}
+
 test_presets_and_config() {
   local repo
   repo="$(setup_repo)"
@@ -151,5 +158,6 @@ test_status_and_clean_flow
 test_audit_help
 test_apply_help
 test_bulk_help
+test_pr_gates_help
 test_presets_and_config
 echo "All tests passed."
