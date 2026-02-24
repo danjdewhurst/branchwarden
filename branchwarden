@@ -9,21 +9,30 @@ Usage:
   branchwarden <subcommand> [flags]
 
 Subcommands:
-  status   Audit branch health (merged, gone upstream, ahead/behind)
-  stale    List branches with no commits for N days
-  clean    Delete safe branches (merged/gone) with dry-run by default
-  audit    Detect GitHub branch-protection drift vs desired policy
-  apply    Apply desired branch-protection policy (use --fix to enforce)
-  bulk     Run audit/apply across org repos filtered by topic/pattern
-  pr-gates Validate PR quality gates (labels, linked issue, reviewer minimums)
+  status      Audit branch health (merged, gone upstream, ahead/behind)
+  stale       List branches with no commits for N days
+  clean       Delete safe branches (merged/gone) with dry-run by default
+  audit       Detect GitHub branch-protection drift vs desired policy
+  apply       Apply desired branch-protection policy (use --fix to enforce)
+  bulk        Run audit/apply across org repos filtered by topic/pattern
+  pr-gates    Validate PR quality gates (labels, linked issue, reviewer minimums)
+  doctor      Diagnose local/GitHub setup issues and suggest fixes
+  init        Scaffold branchwarden config and workflow templates
+  completion  Emit shell completions (bash|zsh|fish)
 
 Run 'branchwarden <subcommand> --help' for details.
 TXT
 }
 
+common_format_help() {
+  cat <<'TXT'
+  --format text|json     command output format (default: text)
+TXT
+}
+
 apply_help() {
   cat <<'TXT'
-Usage: branchwarden apply [--repo <owner/name>] [--base <branch>] [--fix] [--config <path>]
+Usage: branchwarden apply [--repo <owner/name>] [--base <branch>] [--fix] [--config <path>] [--format text|json]
 
 Flags:
   --repo <owner/name>   GitHub repo (auto-detected from origin remote if omitted)
@@ -31,12 +40,13 @@ Flags:
   --fix                 apply changes via GitHub API (default: drift preview only)
                         (updates classic branch protection and bootstraps ruleset when missing)
   --config <path>       config file path (default: ./branchwarden.config)
+  --format text|json    output format (default: text)
 TXT
 }
 
 bulk_help() {
   cat <<'TXT'
-Usage: branchwarden bulk --org <org> [--topic <topic>] [--pattern <regex>] [--action audit|apply] [--base <branch>] [--fix]
+Usage: branchwarden bulk --org <org> [--topic <topic>] [--pattern <regex>] [--action audit|apply] [--base <branch>] [--fix] [--format text|json]
 
 Flags:
   --org <org>           GitHub org to scan
@@ -45,12 +55,13 @@ Flags:
   --action <mode>       audit or apply (default: audit)
   --base <branch>       branch (default: main)
   --fix                 when --action apply, enforce changes
+  --format text|json    output format (default: text)
 TXT
 }
 
 pr_gates_help() {
   cat <<'TXT'
-Usage: branchwarden pr-gates --pr <number> [--repo <owner/name>] [--require-label <name>] [--require-linked-issue] [--min-reviewers <n>] [--config <path>]
+Usage: branchwarden pr-gates --pr <number> [--repo <owner/name>] [--require-label <name>] [--require-linked-issue] [--min-reviewers <n>] [--config <path>] [--format text|json]
 
 Flags:
   --pr <number>             pull request number (required)
@@ -58,36 +69,39 @@ Flags:
   --require-label <name>    required PR label (repeatable)
   --require-linked-issue    require at least one linked issue
   --min-reviewers <n>       minimum approved reviewers
+  --format text|json        output format (default: text)
 TXT
 }
 
 status_help() {
   cat <<'TXT'
-Usage: branchwarden status [--base <ref>] [--preset strict|balanced|solo-dev] [--protect <pattern>] [--config <path>]
+Usage: branchwarden status [--base <ref>] [--preset strict|balanced|solo-dev] [--protect <pattern>] [--config <path>] [--format text|json]
 
 Flags:
   --base <ref>       base branch to test merge status against (default: origin/main)
   --preset <name>    protected-branch preset: strict|balanced|solo-dev (default: balanced)
   --protect <pat>    additional protected branch pattern (repeatable; supports *)
   --config <path>    config file path (default: ./branchwarden.config)
+  --format text|json output format (default: text)
 TXT
 }
 
 stale_help() {
   cat <<'TXT'
-Usage: branchwarden stale [--days <n>] [--preset strict|balanced|solo-dev] [--protect <pattern>] [--config <path>]
+Usage: branchwarden stale [--days <n>] [--preset strict|balanced|solo-dev] [--protect <pattern>] [--config <path>] [--format text|json]
 
 Flags:
   --days <n>         minimum age in days since last commit (default: 30)
   --preset <name>    protected-branch preset: strict|balanced|solo-dev (default: balanced)
   --protect <pat>    additional protected branch pattern (repeatable; supports *)
   --config <path>    config file path (default: ./branchwarden.config)
+  --format text|json output format (default: text)
 TXT
 }
 
 clean_help() {
   cat <<'TXT'
-Usage: branchwarden clean [--base <ref>] [--mode merged|gone|both] [--yes] [--plan text|json] [--preset strict|balanced|solo-dev] [--protect <pattern>] [--config <path>]
+Usage: branchwarden clean [--base <ref>] [--mode merged|gone|both] [--yes] [--plan text|json] [--preset strict|balanced|solo-dev] [--protect <pattern>] [--config <path>] [--format text|json]
 
 Flags:
   --base <ref>             base branch to test merge status against (default: origin/main)
@@ -97,27 +111,50 @@ Flags:
   --preset <name>          protected-branch preset: strict|balanced|solo-dev (default: balanced)
   --protect <pat>          additional protected branch pattern (repeatable; supports *)
   --config <path>          config file path (default: ./branchwarden.config)
+  --format text|json       output format (default: text)
 TXT
 }
 
 audit_help() {
   cat <<'TXT'
-Usage: branchwarden audit [--repo <owner/name>] [--base <branch>] [--output text|markdown|json|sarif] [--config <path>]
+Usage: branchwarden audit [--repo <owner/name>] [--base <branch>] [--output text|markdown|json|sarif] [--config <path>] [--format text|json]
 
 Flags:
   --repo <owner/name>   GitHub repo (auto-detected from origin remote if omitted)
   --base <branch>       branch to audit protection for (default: main)
   --output <format>     text|markdown|json|sarif (default: text)
   --config <path>       config file path (default: ./branchwarden.config)
+  --format text|json    wrapper output format (default: text, use --output for report format)
+TXT
+}
 
-Config keys for policy:
-  REQUIRED_CHECKS=<check name>[,<check name>...]
-  REQUIRED_APPROVALS=<n>
-  REQUIRE_CONVERSATION_RESOLUTION=true|false
-  ENFORCE_ADMINS=true|false
-  REQUIRED_LABELS=<label>[,<label>...]
-  REQUIRE_LINKED_ISSUE=true|false
-  MIN_REVIEWERS=<n>
+doctor_help() {
+  cat <<'TXT'
+Usage: branchwarden doctor [--repo <owner/name>] [--format text|json]
+
+Checks:
+  - gh CLI availability + auth status
+  - git repository detection
+  - GitHub repo auto-detection from origin
+  - token scopes via GitHub API response headers
+  - actionable fix suggestions
+TXT
+}
+
+init_help() {
+  cat <<'TXT'
+Usage: branchwarden init [--path <dir>] [--workflow audit|enforce|both] [--force]
+
+Flags:
+  --path <dir>            target directory (default: current directory)
+  --workflow <mode>       audit|enforce|both (default: both)
+  --force                 overwrite existing files
+TXT
+}
+
+completion_help() {
+  cat <<'TXT'
+Usage: branchwarden completion <bash|zsh|fish>
 TXT
 }
 
@@ -147,6 +184,13 @@ trim() {
   s="${s#${s%%[![:space:]]*}}"
   s="${s%${s##*[![:space:]]}}"
   printf '%s' "$s"
+}
+
+json_escape() {
+  python3 - <<'PY' "$1"
+import json,sys
+print(json.dumps(sys.argv[1]))
+PY
 }
 
 append_csv_to_array() {
@@ -202,11 +246,49 @@ autodetect_repo() {
   return 1
 }
 
+mock_file() {
+  local key="$1"
+  [[ -n "${BRANCHWARDEN_MOCK_DIR:-}" ]] || return 1
+  local path="${BRANCHWARDEN_MOCK_DIR}/${key}.json"
+  [[ -f "$path" ]] || return 1
+  printf '%s\n' "$path"
+}
+
+gh_api() {
+  local endpoint="$1"
+  shift || true
+  local key="$(echo "$endpoint" | tr '/:-' '___')"
+  if local m="$(mock_file "api_${key}")"; then
+    cat "$m"
+    return 0
+  fi
+  gh api "$endpoint" "$@"
+}
+
+gh_pr_view() {
+  local pr="$1" repo="$2"
+  if local m="$(mock_file "pr_${repo//\//_}_${pr}")"; then
+    cat "$m"
+    return 0
+  fi
+  gh pr view "$pr" --repo "$repo" --json labels,closingIssuesReferences,reviews
+}
+
+gh_auth_status_text() {
+  if local m="$(mock_file "auth_status")"; then cat "$m"; return 0; fi
+  gh auth status 2>&1
+}
+
+fetch_scope_header() {
+  if local m="$(mock_file "auth_scopes")"; then cat "$m"; return 0; fi
+  gh api -i user 2>/dev/null | awk -F': ' 'tolower($1)=="x-oauth-scopes"{print $2; exit}' | tr -d '\r'
+}
+
 fetch_matching_rulesets_count() {
   local repo="$1"
   local base="$2"
   local rs_json
-  if ! rs_json="$(gh api "repos/${repo}/rulesets" --paginate 2>/dev/null || true)"; then
+  if ! rs_json="$(gh_api "repos/${repo}/rulesets" --paginate 2>/dev/null || true)"; then
     echo "0"
     return 0
   fi
@@ -231,31 +313,19 @@ PY
 preset_patterns() {
   local preset="$1"
   case "$preset" in
-    strict)
-      printf '%s\n' main master develop dev 'release/*' 'hotfix/*'
-      ;;
-    balanced)
-      printf '%s\n' main master develop dev
-      ;;
-    solo-dev)
-      printf '%s\n' main
-      ;;
-    *)
-      echo "error: --preset must be one of: strict, balanced, solo-dev" >&2
-      exit 1
-      ;;
+    strict) printf '%s\n' main master develop dev 'release/*' 'hotfix/*' ;;
+    balanced) printf '%s\n' main master develop dev ;;
+    solo-dev) printf '%s\n' main ;;
+    *) echo "error: --preset must be one of: strict, balanced, solo-dev" >&2; exit 1 ;;
   esac
 }
 
 branch_is_protected() {
-  local name="$1"
-  shift || true
+  local name="$1"; shift || true
   local pat
   for pat in "$@"; do
     [[ -z "$pat" ]] && continue
-    case "$name" in
-      $pat) return 0 ;;
-    esac
+    case "$name" in $pat) return 0 ;; esac
   done
   return 1
 }
@@ -270,20 +340,13 @@ merged_branches() {
 }
 
 cmd_status() {
-  local base="origin/main"
-  local preset="balanced"
-  local config_path="branchwarden.config"
+  local base="origin/main" preset="balanced" config_path="branchwarden.config" format="text"
   local protect_patterns=()
 
-  # pre-scan config path
   local i=1
   while (( i <= $# )); do
     local arg="${!i}"
-    if [[ "$arg" == "--config" ]]; then
-      ((i++))
-      [[ $i -le $# ]] || { echo "error: --config requires a value" >&2; exit 1; }
-      config_path="${!i}"
-    fi
+    if [[ "$arg" == "--config" ]]; then ((i++)); config_path="${!i}"; fi
     ((i++))
   done
 
@@ -294,92 +357,67 @@ cmd_status() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --base)
-        shift; [[ $# -gt 0 ]] || { echo "error: --base requires a value" >&2; exit 1; }
-        base="$1"
-        ;;
-      --preset)
-        shift; [[ $# -gt 0 ]] || { echo "error: --preset requires a value" >&2; exit 1; }
-        preset="$1"
-        ;;
-      --protect)
-        shift; [[ $# -gt 0 ]] || { echo "error: --protect requires a value" >&2; exit 1; }
-        protect_patterns+=("$1")
-        ;;
-      --config)
-        shift; [[ $# -gt 0 ]] || { echo "error: --config requires a value" >&2; exit 1; }
-        ;;
-      --help|-h)
-        status_help; exit 0 ;;
-      *)
-        echo "error: unknown flag for status: $1" >&2
-        status_help >&2
-        exit 1
-        ;;
+      --base) shift; base="$1" ;;
+      --preset) shift; preset="$1" ;;
+      --protect) shift; protect_patterns+=("$1") ;;
+      --format) shift; format="$1" ;;
+      --config) shift ;;
+      --help|-h) status_help; exit 0 ;;
+      *) echo "error: unknown flag for status: $1" >&2; status_help >&2; exit 1 ;;
     esac
     shift
   done
-
-  [[ -n "$base" ]] || { echo "error: --base cannot be empty" >&2; exit 1; }
+  [[ "$format" == "text" || "$format" == "json" ]] || { echo "error: --format must be text|json" >&2; exit 1; }
 
   mapfile -t preset_protect < <(preset_patterns "$preset")
   local protected=("${preset_protect[@]}" "${protect_patterns[@]}")
-
   local merged_set
-  if ! merged_set="$(merged_branches "$base" 2>/tmp/branchwarden_status_err)"; then
-    echo "error: could not evaluate merged branches against '$base': $(cat /tmp/branchwarden_status_err)" >&2
-    exit 1
-  fi
+  merged_set="$(merged_branches "$base")"
 
   local merged=0 gone=0 diverged=0
-  echo "Branch status:"
+  local json_items=()
+  if [[ "$format" == "text" ]]; then echo "Branch status:"; fi
   while IFS='|' read -r name track _unix; do
     [[ -n "$name" ]] || continue
     branch_is_protected "$name" "${protected[@]}" && continue
-
-    local states=()
-    if grep -Fxq "$name" <<<"$merged_set"; then
-      states+=("merged")
-      ((merged+=1))
-    fi
-    if [[ "$track" == *gone* ]]; then
-      states+=("upstream-gone")
-      ((gone+=1))
-    fi
-
+    local states=() tags=()
+    if grep -Fxq "$name" <<<"$merged_set"; then states+=("merged"); tags+=("merged"); ((merged+=1)); fi
+    if [[ "$track" == *gone* ]]; then states+=("upstream-gone"); tags+=("upstream-gone"); ((gone+=1)); fi
     local ahead=0 behind=0
-    if [[ "$track" =~ ahead[[:space:]]+([0-9]+) ]]; then ahead="${BASH_REMATCH[1]}"; fi
-    if [[ "$track" =~ behind[[:space:]]+([0-9]+) ]]; then behind="${BASH_REMATCH[1]}"; fi
-    if (( ahead > 0 || behind > 0 )); then
-      states+=("ahead:${ahead} behind:${behind}")
-      ((diverged+=1))
-    fi
-
+    [[ "$track" =~ ahead[[:space:]]+([0-9]+) ]] && ahead="${BASH_REMATCH[1]}"
+    [[ "$track" =~ behind[[:space:]]+([0-9]+) ]] && behind="${BASH_REMATCH[1]}"
+    if (( ahead > 0 || behind > 0 )); then states+=("ahead:${ahead} behind:${behind}"); ((diverged+=1)); fi
     if (( ${#states[@]} > 0 )); then
-      printf -- "- %-28s %s\n" "$name" "$(IFS=', '; echo "${states[*]}")"
+      if [[ "$format" == "text" ]]; then
+        printf -- "- %-28s %s\n" "$name" "$(IFS=', '; echo "${states[*]}")"
+      else
+        local tags_json="[]"
+        if (( ${#tags[@]} > 0 )); then
+          tags_json="$(python3 - <<'PY' "${tags[*]}"
+import json,sys
+print(json.dumps(sys.argv[1].split()))
+PY
+)"
+        fi
+        json_items+=("{\"branch\":$(json_escape "$name"),\"merged\":$([[ " ${tags[*]} " == *" merged "* ]] && echo true || echo false),\"upstreamGone\":$([[ " ${tags[*]} " == *" upstream-gone "* ]] && echo true || echo false),\"ahead\":${ahead},\"behind\":${behind}}")
+      fi
     fi
   done < <(branch_rows)
 
-  echo
-  echo "Summary: merged=${merged} gone=${gone} diverged=${diverged}"
+  if [[ "$format" == "text" ]]; then
+    echo
+    echo "Summary: merged=${merged} gone=${gone} diverged=${diverged}"
+  else
+    local joined="$(IFS=,; echo "${json_items[*]:-}")"
+    printf '{"base":%s,"summary":{"merged":%d,"gone":%d,"diverged":%d},"branches":[%s]}\n' "$(json_escape "$base")" "$merged" "$gone" "$diverged" "$joined"
+  fi
 }
 
 cmd_stale() {
-  local days=30
-  local preset="balanced"
-  local config_path="branchwarden.config"
+  local days=30 preset="balanced" config_path="branchwarden.config" format="text"
   local protect_patterns=()
-
   local i=1
-  while (( i <= $# )); do
-    local arg="${!i}"
-    if [[ "$arg" == "--config" ]]; then
-      ((i++)); [[ $i -le $# ]] || { echo "error: --config requires a value" >&2; exit 1; }
-      config_path="${!i}"
-    fi
-    ((i++))
-  done
-
+  while (( i <= $# )); do local arg="${!i}"; if [[ "$arg" == "--config" ]]; then ((i++)); config_path="${!i}"; fi; ((i++)); done
   load_config_file "$config_path"
   [[ -n "$CFG_DAYS" ]] && days="$CFG_DAYS"
   [[ -n "$CFG_PRESET" ]] && preset="$CFG_PRESET"
@@ -387,76 +425,53 @@ cmd_stale() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --days)
-        shift; [[ $# -gt 0 ]] || { echo "error: --days requires a value" >&2; exit 1; }
-        days="$1"
-        ;;
-      --preset)
-        shift; [[ $# -gt 0 ]] || { echo "error: --preset requires a value" >&2; exit 1; }
-        preset="$1"
-        ;;
-      --protect)
-        shift; [[ $# -gt 0 ]] || { echo "error: --protect requires a value" >&2; exit 1; }
-        protect_patterns+=("$1")
-        ;;
-      --config)
-        shift; [[ $# -gt 0 ]] || { echo "error: --config requires a value" >&2; exit 1; }
-        ;;
-      --help|-h)
-        stale_help; exit 0 ;;
-      *)
-        echo "error: unknown flag for stale: $1" >&2
-        stale_help >&2
-        exit 1
-        ;;
+      --days) shift; days="$1" ;;
+      --preset) shift; preset="$1" ;;
+      --protect) shift; protect_patterns+=("$1") ;;
+      --format) shift; format="$1" ;;
+      --config) shift ;;
+      --help|-h) stale_help; exit 0 ;;
+      *) echo "error: unknown flag for stale: $1" >&2; stale_help >&2; exit 1 ;;
     esac
     shift
   done
-
   [[ "$days" =~ ^[0-9]+$ ]] || { echo "error: --days must be a positive integer" >&2; exit 1; }
   (( days > 0 )) || { echo "error: --days must be > 0" >&2; exit 1; }
+  [[ "$format" == "text" || "$format" == "json" ]] || { echo "error: --format must be text|json" >&2; exit 1; }
 
   mapfile -t preset_protect < <(preset_patterns "$preset")
   local protected=("${preset_protect[@]}" "${protect_patterns[@]}")
-
-  local now cutoff
-  now=$(date +%s)
-  cutoff=$(( now - (days * 86400) ))
+  local now cutoff; now=$(date +%s); cutoff=$(( now - (days * 86400) ))
 
   local count=0
-  echo "Stale branches (>${days} days):"
+  local items=()
+  [[ "$format" == "text" ]] && echo "Stale branches (>${days} days):"
   while IFS='|' read -r name _track unix; do
     [[ -n "$name" ]] || continue
     branch_is_protected "$name" "${protected[@]}" && continue
     (( unix <= cutoff )) || continue
-    local ts
-    ts=$(date -u -d "@${unix}" +%F)
-    printf -- "- %-28s last-commit=%s\n" "$name" "$ts"
+    local ts; ts=$(date -u -d "@${unix}" +%F)
     ((count+=1))
+    if [[ "$format" == "text" ]]; then
+      printf -- "- %-28s last-commit=%s\n" "$name" "$ts"
+    else
+      items+=("{\"branch\":$(json_escape "$name"),\"lastCommit\":$(json_escape "$ts"),\"lastCommitUnix\":${unix}}")
+    fi
   done < <(branch_rows)
 
-  echo "Total stale branches: ${count}"
+  if [[ "$format" == "text" ]]; then
+    echo "Total stale branches: ${count}"
+  else
+    local joined="$(IFS=,; echo "${items[*]:-}")"
+    printf '{"days":%d,"count":%d,"branches":[%s]}\n' "$days" "$count" "$joined"
+  fi
 }
 
 cmd_clean() {
-  local base="origin/main"
-  local mode="both"
-  local yes="false"
-  local plan="text"
-  local preset="balanced"
-  local config_path="branchwarden.config"
+  local base="origin/main" mode="both" yes="false" plan="text" preset="balanced" config_path="branchwarden.config" format="text"
   local protect_patterns=()
-
   local i=1
-  while (( i <= $# )); do
-    local arg="${!i}"
-    if [[ "$arg" == "--config" ]]; then
-      ((i++)); [[ $i -le $# ]] || { echo "error: --config requires a value" >&2; exit 1; }
-      config_path="${!i}"
-    fi
-    ((i++))
-  done
-
+  while (( i <= $# )); do local arg="${!i}"; if [[ "$arg" == "--config" ]]; then ((i++)); config_path="${!i}"; fi; ((i++)); done
   load_config_file "$config_path"
   [[ -n "$CFG_BASE" ]] && base="$CFG_BASE"
   [[ -n "$CFG_MODE" ]] && mode="$CFG_MODE"
@@ -465,92 +480,49 @@ cmd_clean() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --base)
-        shift; [[ $# -gt 0 ]] || { echo "error: --base requires a value" >&2; exit 1; }
-        base="$1"
-        ;;
-      --mode)
-        shift; [[ $# -gt 0 ]] || { echo "error: --mode requires a value" >&2; exit 1; }
-        mode="$1"
-        ;;
-      --yes)
-        yes="true"
-        ;;
-      --plan)
-        shift; [[ $# -gt 0 ]] || { echo "error: --plan requires a value" >&2; exit 1; }
-        plan="$1"
-        ;;
-      --preset)
-        shift; [[ $# -gt 0 ]] || { echo "error: --preset requires a value" >&2; exit 1; }
-        preset="$1"
-        ;;
-      --protect)
-        shift; [[ $# -gt 0 ]] || { echo "error: --protect requires a value" >&2; exit 1; }
-        protect_patterns+=("$1")
-        ;;
-      --config)
-        shift; [[ $# -gt 0 ]] || { echo "error: --config requires a value" >&2; exit 1; }
-        ;;
-      --help|-h)
-        clean_help; exit 0 ;;
-      *)
-        echo "error: unknown flag for clean: $1" >&2
-        clean_help >&2
-        exit 1
-        ;;
+      --base) shift; base="$1" ;;
+      --mode) shift; mode="$1" ;;
+      --yes) yes="true" ;;
+      --plan) shift; plan="$1" ;;
+      --preset) shift; preset="$1" ;;
+      --protect) shift; protect_patterns+=("$1") ;;
+      --format) shift; format="$1" ;;
+      --config) shift ;;
+      --help|-h) clean_help; exit 0 ;;
+      *) echo "error: unknown flag for clean: $1" >&2; clean_help >&2; exit 1 ;;
     esac
     shift
   done
 
-  [[ -n "$base" ]] || { echo "error: --base cannot be empty" >&2; exit 1; }
-  case "$mode" in
-    merged|gone|both) ;;
-    *) echo "error: --mode must be one of: merged, gone, both" >&2; exit 1 ;;
-  esac
-  case "$plan" in
-    text|json) ;;
-    *) echo "error: --plan must be one of: text, json" >&2; exit 1 ;;
-  esac
+  case "$mode" in merged|gone|both) ;; *) echo "error: --mode must be one of: merged, gone, both" >&2; exit 1 ;; esac
+  case "$plan" in text|json) ;; *) echo "error: --plan must be one of: text, json" >&2; exit 1 ;; esac
+  [[ "$format" == "text" || "$format" == "json" ]] || { echo "error: --format must be text|json" >&2; exit 1; }
 
   mapfile -t preset_protect < <(preset_patterns "$preset")
   local protected=("${preset_protect[@]}" "${protect_patterns[@]}")
-
-  local merged_set
-  if ! merged_set="$(merged_branches "$base" 2>/tmp/branchwarden_clean_err)"; then
-    echo "error: could not evaluate merged branches against '$base': $(cat /tmp/branchwarden_clean_err)" >&2
-    exit 1
-  fi
-
+  local merged_set; merged_set="$(merged_branches "$base")"
   local candidates=()
+
   while IFS='|' read -r name track _unix; do
     [[ -n "$name" ]] || continue
     branch_is_protected "$name" "${protected[@]}" && continue
-
     local should_delete="false"
-    if [[ "$mode" == "merged" || "$mode" == "both" ]]; then
-      grep -Fxq "$name" <<<"$merged_set" && should_delete="true"
-    fi
-    if [[ "$mode" == "gone" || "$mode" == "both" ]]; then
-      [[ "$track" == *gone* ]] && should_delete="true"
-    fi
-
+    if [[ "$mode" == "merged" || "$mode" == "both" ]]; then grep -Fxq "$name" <<<"$merged_set" && should_delete="true"; fi
+    if [[ "$mode" == "gone" || "$mode" == "both" ]]; then [[ "$track" == *gone* ]] && should_delete="true"; fi
     [[ "$should_delete" == "true" ]] && candidates+=("$name")
   done < <(branch_rows)
 
   if (( ${#candidates[@]} == 0 )); then
-    echo "No branches matched cleanup criteria."
+    [[ "$format" == "json" ]] && printf '{"dryRun":%s,"mode":%s,"base":%s,"count":0,"candidates":[]}\n' "$([[ "$yes" == true ]] && echo false || echo true)" "$(json_escape "$mode")" "$(json_escape "$base")" || echo "No branches matched cleanup criteria."
     return
   fi
 
   if [[ "$yes" != "true" ]]; then
-    if [[ "$plan" == "json" ]]; then
-      printf '{"dryRun":true,"mode":"%s","base":"%s","count":%d,"candidates":[' "$mode" "$base" "${#candidates[@]}"
-      local idx
-      for idx in "${!candidates[@]}"; do
-        [[ "$idx" -gt 0 ]] && printf ','
-        printf '"%s"' "${candidates[$idx]}"
-      done
-      printf ']}\n'
+    if [[ "$plan" == "json" || "$format" == "json" ]]; then
+      python3 - <<'PY' "$mode" "$base" "${candidates[*]}"
+import json,sys
+print(json.dumps({"dryRun":True,"mode":sys.argv[1],"base":sys.argv[2],"count":len(sys.argv[3].split()),"candidates":[x for x in sys.argv[3].split() if x]}))
+PY
     else
       echo "Dry run. Pass --yes to delete these branches:"
       printf -- "- %s\n" "${candidates[@]}"
@@ -558,36 +530,24 @@ cmd_clean() {
     return
   fi
 
+  local deleted=()
   local b
-  for b in "${candidates[@]}"; do
-    git branch -D "$b" >/dev/null
-    echo "Deleted ${b}"
-  done
+  for b in "${candidates[@]}"; do git branch -D "$b" >/dev/null; deleted+=("$b"); [[ "$format" == "text" ]] && echo "Deleted ${b}"; done
+  if [[ "$format" == "json" ]]; then
+    python3 - <<'PY' "$mode" "$base" "${deleted[*]}"
+import json,sys
+print(json.dumps({"dryRun":False,"mode":sys.argv[1],"base":sys.argv[2],"count":len(sys.argv[3].split()),"deleted":[x for x in sys.argv[3].split() if x]}))
+PY
+  fi
 }
 
 cmd_audit() {
-  local repo=""
-  local base="main"
-  local output="text"
-  local config_path="branchwarden.config"
-
+  local repo="" base="main" output="text" config_path="branchwarden.config" format="text"
   local i=1
-  while (( i <= $# )); do
-    local arg="${!i}"
-    if [[ "$arg" == "--config" ]]; then
-      ((i++)); [[ $i -le $# ]] || { echo "error: --config requires a value" >&2; exit 1; }
-      config_path="${!i}"
-    fi
-    ((i++))
-  done
-
+  while (( i <= $# )); do local arg="${!i}"; if [[ "$arg" == "--config" ]]; then ((i++)); config_path="${!i}"; fi; ((i++)); done
   load_config_file "$config_path"
 
-  local required_checks="CI / test"
-  local required_approvals="1"
-  local require_conversation_resolution="true"
-  local enforce_admins="true"
-
+  local required_checks="CI / test" required_approvals="1" require_conversation_resolution="true" enforce_admins="true"
   [[ -n "$CFG_REQUIRED_CHECKS" ]] && required_checks="$CFG_REQUIRED_CHECKS"
   [[ -n "$CFG_REQUIRED_APPROVALS" ]] && required_approvals="$CFG_REQUIRED_APPROVALS"
   [[ -n "$CFG_REQUIRE_CONVERSATION_RESOLUTION" ]] && require_conversation_resolution="$CFG_REQUIRE_CONVERSATION_RESOLUTION"
@@ -595,54 +555,25 @@ cmd_audit() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --repo)
-        shift; [[ $# -gt 0 ]] || { echo "error: --repo requires a value" >&2; exit 1; }
-        repo="$1"
-        ;;
-      --base)
-        shift; [[ $# -gt 0 ]] || { echo "error: --base requires a value" >&2; exit 1; }
-        base="$1"
-        ;;
-      --output)
-        shift; [[ $# -gt 0 ]] || { echo "error: --output requires a value" >&2; exit 1; }
-        output="$1"
-        ;;
-      --config)
-        shift; [[ $# -gt 0 ]] || { echo "error: --config requires a value" >&2; exit 1; }
-        ;;
-      --help|-h)
-        audit_help; exit 0 ;;
-      *)
-        echo "error: unknown flag for audit: $1" >&2
-        audit_help >&2
-        exit 1
-        ;;
+      --repo) shift; repo="$1" ;;
+      --base) shift; base="$1" ;;
+      --output) shift; output="$1" ;;
+      --format) shift; format="$1" ;;
+      --config) shift ;;
+      --help|-h) audit_help; exit 0 ;;
+      *) echo "error: unknown flag for audit: $1" >&2; audit_help >&2; exit 1 ;;
     esac
     shift
   done
+  [[ "$format" == "text" || "$format" == "json" ]] || { echo "error: --format must be text|json" >&2; exit 1; }
 
-  if [[ -z "$repo" ]]; then
-    if ! repo="$(autodetect_repo)"; then
-      echo "error: unable to auto-detect GitHub repo from origin; pass --repo owner/name" >&2
-      exit 1
-    fi
-  fi
+  [[ -n "$repo" ]] || repo="$(autodetect_repo)" || { echo "error: unable to auto-detect GitHub repo from origin; pass --repo owner/name" >&2; exit 1; }
+  case "$output" in text|markdown|json|sarif) ;; *) echo "error: --output must be one of: text, markdown, json, sarif" >&2; exit 1 ;; esac
 
-  case "$output" in
-    text|markdown|json|sarif) ;;
-    *) echo "error: --output must be one of: text, markdown, json, sarif" >&2; exit 1 ;;
-  esac
+  local rulesets_count; rulesets_count="$(fetch_matching_rulesets_count "$repo" "$base")"
+  local protection_json; protection_json="$(gh_api "repos/${repo}/branches/${base}/protection")"
 
-  local rulesets_count
-  rulesets_count="$(fetch_matching_rulesets_count "$repo" "$base")"
-
-  local protection_json
-  if ! protection_json="$(gh api repos/${repo}/branches/${base}/protection 2>/tmp/branchwarden_audit_err)"; then
-    echo "error: could not fetch branch protection for ${repo}:${base}: $(cat /tmp/branchwarden_audit_err)" >&2
-    exit 1
-  fi
-
-  python3 - <<'PY' "$protection_json" "$required_checks" "$required_approvals" "$require_conversation_resolution" "$enforce_admins" "$output" "$repo" "$base" "$rulesets_count"
+  python3 - <<'PY' "$protection_json" "$required_checks" "$required_approvals" "$require_conversation_resolution" "$enforce_admins" "$output" "$repo" "$base" "$rulesets_count" "$format"
 import json, sys
 actual = json.loads(sys.argv[1])
 want_checks = [c.strip() for c in sys.argv[2].split(',') if c.strip()]
@@ -653,6 +584,7 @@ out = sys.argv[6]
 repo = sys.argv[7]
 base = sys.argv[8]
 rulesets_count = int(sys.argv[9])
+fmt = sys.argv[10]
 
 act_checks = sorted([(c.get('context') or '') for c in actual.get('required_status_checks', {}).get('checks', [])])
 if not act_checks:
@@ -666,55 +598,42 @@ if sorted(want_checks) != act_checks: drift.append(f"required checks mismatch (w
 if want_approvals != act_approvals: drift.append(f"required approvals mismatch (want={want_approvals}, got={act_approvals})")
 if want_conv != act_conv: drift.append(f"conversation resolution mismatch (want={want_conv}, got={act_conv})")
 if want_admins != act_admins: drift.append(f"enforce admins mismatch (want={want_admins}, got={act_admins})")
-
 report={"repo":repo,"base":base,"rulesetsMatching":rulesets_count,"drift":drift}
-if out == 'json':
-    print(json.dumps(report))
-elif out == 'markdown':
-    print(f"# branchwarden audit\n\n- repo: `{repo}`\n- base: `{base}`\n- rulesets matching branch: `{rulesets_count}`")
-    if drift:
-      print("\n## Drift\n")
-      [print(f"- {d}") for d in drift]
-    else:
-      print("\nNo drift detected.")
-elif out == 'sarif':
-    sarif={"version":"2.1.0","runs":[{"tool":{"driver":{"name":"branchwarden","rules":[{"id":"branch-protection-drift"}]}},"results":[{"ruleId":"branch-protection-drift","level":"error","message":{"text":d}} for d in drift]}]}
-    print(json.dumps(sarif))
+
+if fmt == 'json':
+    print(json.dumps({"ok": len(drift)==0, "report": report, "output": out}))
 else:
-    print(f"Rulesets matching {base}: {rulesets_count}")
-    if drift:
-      print("DRIFT detected:")
-      [print(f"- {d}") for d in drift]
+    if out == 'json':
+        print(json.dumps(report))
+    elif out == 'markdown':
+        print(f"# branchwarden audit\n\n- repo: `{repo}`\n- base: `{base}`\n- rulesets matching branch: `{rulesets_count}`")
+        if drift:
+          print("\n## Drift\n")
+          [print(f"- {d}") for d in drift]
+        else:
+          print("\nNo drift detected.")
+    elif out == 'sarif':
+        sarif={"version":"2.1.0","runs":[{"tool":{"driver":{"name":"branchwarden","rules":[{"id":"branch-protection-drift"}]}},"results":[{"ruleId":"branch-protection-drift","level":"error","message":{"text":d}} for d in drift]}]}
+        print(json.dumps(sarif))
     else:
-      print("No drift: branch protection matches desired policy.")
+        print(f"Rulesets matching {base}: {rulesets_count}")
+        if drift:
+          print("DRIFT detected:")
+          [print(f"- {d}") for d in drift]
+        else:
+          print("No drift: branch protection matches desired policy.")
 
 if drift: raise SystemExit(2)
 PY
 }
 
 cmd_apply() {
-  local repo=""
-  local base="main"
-  local do_fix="false"
-  local config_path="branchwarden.config"
-
+  local repo="" base="main" do_fix="false" config_path="branchwarden.config" format="text"
   local i=1
-  while (( i <= $# )); do
-    local arg="${!i}"
-    if [[ "$arg" == "--config" ]]; then
-      ((i++)); [[ $i -le $# ]] || { echo "error: --config requires a value" >&2; exit 1; }
-      config_path="${!i}"
-    fi
-    ((i++))
-  done
-
+  while (( i <= $# )); do local arg="${!i}"; if [[ "$arg" == "--config" ]]; then ((i++)); config_path="${!i}"; fi; ((i++)); done
   load_config_file "$config_path"
 
-  local required_checks="CI / test"
-  local required_approvals="1"
-  local require_conversation_resolution="true"
-  local enforce_admins="true"
-
+  local required_checks="CI / test" required_approvals="1" require_conversation_resolution="true" enforce_admins="true"
   [[ -n "$CFG_REQUIRED_CHECKS" ]] && required_checks="$CFG_REQUIRED_CHECKS"
   [[ -n "$CFG_REQUIRED_APPROVALS" ]] && required_approvals="$CFG_REQUIRED_APPROVALS"
   [[ -n "$CFG_REQUIRE_CONVERSATION_RESOLUTION" ]] && require_conversation_resolution="$CFG_REQUIRE_CONVERSATION_RESOLUTION"
@@ -722,164 +641,105 @@ cmd_apply() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --repo)
-        shift; [[ $# -gt 0 ]] || { echo "error: --repo requires a value" >&2; exit 1; }
-        repo="$1"
-        ;;
-      --base)
-        shift; [[ $# -gt 0 ]] || { echo "error: --base requires a value" >&2; exit 1; }
-        base="$1"
-        ;;
-      --fix)
-        do_fix="true"
-        ;;
-      --config)
-        shift; [[ $# -gt 0 ]] || { echo "error: --config requires a value" >&2; exit 1; }
-        ;;
-      --help|-h)
-        apply_help; exit 0 ;;
-      *)
-        echo "error: unknown flag for apply: $1" >&2
-        apply_help >&2
-        exit 1
-        ;;
+      --repo) shift; repo="$1" ;;
+      --base) shift; base="$1" ;;
+      --fix) do_fix="true" ;;
+      --format) shift; format="$1" ;;
+      --config) shift ;;
+      --help|-h) apply_help; exit 0 ;;
+      *) echo "error: unknown flag for apply: $1" >&2; apply_help >&2; exit 1 ;;
     esac
     shift
   done
+  [[ "$format" == "text" || "$format" == "json" ]] || { echo "error: --format must be text|json" >&2; exit 1; }
+  [[ -n "$repo" ]] || repo="$(autodetect_repo)" || { echo "error: unable to auto-detect GitHub repo from origin; pass --repo owner/name" >&2; exit 1; }
 
-  if [[ -z "$repo" ]]; then
-    if ! repo="$(autodetect_repo)"; then
-      echo "error: unable to auto-detect GitHub repo from origin; pass --repo owner/name" >&2
-      exit 1
-    fi
-  fi
+  local rulesets_count; rulesets_count="$(fetch_matching_rulesets_count "$repo" "$base")"
+  local protection_json; protection_json="$(gh_api "repos/${repo}/branches/${base}/protection")"
+  local payload_file; payload_file="$(mktemp)"
 
-  local rulesets_count
-  rulesets_count="$(fetch_matching_rulesets_count "$repo" "$base")"
-
-  local protection_json
-  if ! protection_json="$(gh api repos/${repo}/branches/${base}/protection 2>/tmp/branchwarden_apply_err)"; then
-    echo "error: could not fetch branch protection for ${repo}:${base}: $(cat /tmp/branchwarden_apply_err)" >&2
-    exit 1
-  fi
-
-  local payload_file
-  payload_file="$(mktemp)"
-  local drift_rc=0
-  set +e
-  python3 - <<'PY' "$protection_json" "$required_checks" "$required_approvals" "$require_conversation_resolution" "$enforce_admins" "$payload_file"
-import json, sys
-actual = json.loads(sys.argv[1])
-want_checks = [c.strip() for c in sys.argv[2].split(',') if c.strip()]
-want_approvals = int(sys.argv[3])
-want_conv = sys.argv[4].lower() == 'true'
-want_admins = sys.argv[5].lower() == 'true'
-payload_file = sys.argv[6]
-
-act_checks = sorted([(c.get('context') or '') for c in actual.get('required_status_checks', {}).get('checks', [])])
-if not act_checks:
-    act_checks = sorted(actual.get('required_status_checks', {}).get('contexts', []))
-act_approvals = actual.get('required_pull_request_reviews', {}).get('required_approving_review_count', 0)
-act_conv = actual.get('required_conversation_resolution', {}).get('enabled', False)
-act_admins = actual.get('enforce_admins', {}).get('enabled', False)
-
-drift = []
-if sorted(want_checks) != act_checks:
-    drift.append(f"required checks mismatch (want={want_checks}, got={act_checks})")
-if want_approvals != act_approvals:
-    drift.append(f"required approvals mismatch (want={want_approvals}, got={act_approvals})")
-if want_conv != act_conv:
-    drift.append(f"conversation resolution mismatch (want={want_conv}, got={act_conv})")
-if want_admins != act_admins:
-    drift.append(f"enforce admins mismatch (want={want_admins}, got={act_admins})")
-
-payload = {
-  "required_status_checks": {"strict": True, "checks": [{"context": c} for c in want_checks]},
-  "enforce_admins": want_admins,
-  "required_pull_request_reviews": {
-    "dismiss_stale_reviews": True,
-    "require_code_owner_reviews": False,
-    "required_approving_review_count": want_approvals,
-    "require_last_push_approval": False
-  },
-  "restrictions": None,
-  "required_conversation_resolution": want_conv
-}
-with open(payload_file, 'w', encoding='utf-8') as f:
-    json.dump(payload, f)
-
-if drift:
-    print("DRIFT detected:")
-    for line in drift:
-        print(f"- {line}")
-    sys.exit(2)
-
-print("No drift: branch protection already matches desired policy.")
+  local drift
+  drift="$(python3 - <<'PY' "$protection_json" "$required_checks" "$required_approvals" "$require_conversation_resolution" "$enforce_admins" "$payload_file"
+import json,sys
+actual=json.loads(sys.argv[1])
+want_checks=[c.strip() for c in sys.argv[2].split(',') if c.strip()]
+want_approvals=int(sys.argv[3])
+want_conv=sys.argv[4].lower()=='true'
+want_admins=sys.argv[5].lower()=='true'
+outf=sys.argv[6]
+act_checks=sorted([(c.get('context') or '') for c in actual.get('required_status_checks', {}).get('checks', [])])
+if not act_checks: act_checks=sorted(actual.get('required_status_checks', {}).get('contexts', []))
+act_approvals=actual.get('required_pull_request_reviews',{}).get('required_approving_review_count',0)
+act_conv=actual.get('required_conversation_resolution',{}).get('enabled',False)
+act_admins=actual.get('enforce_admins',{}).get('enabled',False)
+d=[]
+if sorted(want_checks)!=act_checks:d.append(f"required checks mismatch (want={want_checks}, got={act_checks})")
+if want_approvals!=act_approvals:d.append(f"required approvals mismatch (want={want_approvals}, got={act_approvals})")
+if want_conv!=act_conv:d.append(f"conversation resolution mismatch (want={want_conv}, got={act_conv})")
+if want_admins!=act_admins:d.append(f"enforce admins mismatch (want={want_admins}, got={act_admins})")
+payload={"required_status_checks":{"strict":True,"checks":[{"context":c} for c in want_checks]},"enforce_admins":want_admins,"required_pull_request_reviews":{"dismiss_stale_reviews":True,"require_code_owner_reviews":False,"required_approving_review_count":want_approvals,"require_last_push_approval":False},"restrictions":None,"required_conversation_resolution":want_conv}
+open(outf,'w').write(json.dumps(payload))
+print(json.dumps(d))
 PY
-  drift_rc=$?
-  set -e
+)"
 
-  if [[ "$drift_rc" -eq 0 ]]; then
+  local drift_count; drift_count="$(python3 - <<'PY' "$drift"
+import json,sys
+print(len(json.loads(sys.argv[1])))
+PY
+)"
+
+  if [[ "$drift_count" -eq 0 ]]; then
     rm -f "$payload_file"
+    [[ "$format" == "json" ]] && printf '{"repo":%s,"base":%s,"changed":false,"drift":[]}\n' "$(json_escape "$repo")" "$(json_escape "$base")" || echo "No drift: branch protection already matches desired policy."
     return
   fi
 
   if [[ "$do_fix" != "true" ]]; then
-    echo "Preview only. Re-run with --fix to apply this policy."
     rm -f "$payload_file"
+    if [[ "$format" == "json" ]]; then
+      printf '{"repo":%s,"base":%s,"changed":false,"preview":true,"drift":%s}\n' "$(json_escape "$repo")" "$(json_escape "$base")" "$drift"
+    else
+      echo "DRIFT detected:"
+      python3 - <<'PY' "$drift"
+import json,sys
+for d in json.loads(sys.argv[1]): print(f"- {d}")
+PY
+      echo "Preview only. Re-run with --fix to apply this policy."
+    fi
     exit 2
   fi
 
   gh api -X PUT "repos/${repo}/branches/${base}/protection" --input "$payload_file" >/dev/null
   rm -f "$payload_file"
 
+  local ruleset_created="false"
   if [[ "$rulesets_count" == "0" ]]; then
-    local rs_payload
-    rs_payload="$(mktemp)"
+    local rs_payload; rs_payload="$(mktemp)"
     python3 - <<'PY' "$base" "$required_checks" "$required_approvals" >"$rs_payload"
 import json, sys
-base = sys.argv[1]
-checks = [c.strip() for c in sys.argv[2].split(',') if c.strip()]
-approvals = int(sys.argv[3])
-payload = {
-  "name": f"branchwarden-{base}",
-  "target": "branch",
-  "enforcement": "active",
-  "conditions": {"ref_name": {"include": [f"refs/heads/{base}"], "exclude": []}},
-  "rules": [
-    {"type": "pull_request", "parameters": {"required_approving_review_count": approvals}},
-    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": c} for c in checks], "strict_required_status_checks_policy": True}}
-  ]
-}
+base = sys.argv[1]; checks=[c.strip() for c in sys.argv[2].split(',') if c.strip()]; approvals=int(sys.argv[3])
+payload={"name":f"branchwarden-{base}","target":"branch","enforcement":"active","conditions":{"ref_name":{"include":[f"refs/heads/{base}"],"exclude":[]}},"rules":[{"type":"pull_request","parameters":{"required_approving_review_count":approvals}},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":c} for c in checks],"strict_required_status_checks_policy":True}}]}
 print(json.dumps(payload))
 PY
     gh api -X POST "repos/${repo}/rulesets" --input "$rs_payload" >/dev/null || true
     rm -f "$rs_payload"
-    echo "Created baseline repository ruleset for ${base}"
+    ruleset_created="true"
   fi
 
-  echo "Applied policy to ${repo}:${base} (rulesets matching branch: ${rulesets_count})"
+  if [[ "$format" == "json" ]]; then
+    printf '{"repo":%s,"base":%s,"changed":true,"drift":%s,"rulesetsMatching":%s,"rulesetCreated":%s}\n' "$(json_escape "$repo")" "$(json_escape "$base")" "$drift" "$rulesets_count" "$ruleset_created"
+  else
+    echo "Applied policy to ${repo}:${base} (rulesets matching branch: ${rulesets_count})"
+  fi
 }
 
 cmd_pr_gates() {
-  local pr=""
-  local repo=""
-  local config_path="branchwarden.config"
-  local require_linked_issue="false"
-  local min_reviewers="1"
+  local pr="" repo="" config_path="branchwarden.config" require_linked_issue="false" min_reviewers="1" format="text"
   local req_labels=()
-
   local i=1
-  while (( i <= $# )); do
-    local arg="${!i}"
-    if [[ "$arg" == "--config" ]]; then
-      ((i++)); [[ $i -le $# ]] || { echo "error: --config requires a value" >&2; exit 1; }
-      config_path="${!i}"
-    fi
-    ((i++))
-  done
+  while (( i <= $# )); do local arg="${!i}"; if [[ "$arg" == "--config" ]]; then ((i++)); config_path="${!i}"; fi; ((i++)); done
   load_config_file "$config_path"
-
   [[ -n "$CFG_REQUIRED_LABELS" ]] && append_csv_to_array "$CFG_REQUIRED_LABELS" req_labels
   [[ -n "$CFG_REQUIRE_LINKED_ISSUE" ]] && require_linked_issue="$CFG_REQUIRE_LINKED_ISSUE"
   [[ -n "$CFG_MIN_REVIEWERS" ]] && min_reviewers="$CFG_MIN_REVIEWERS"
@@ -891,54 +751,44 @@ cmd_pr_gates() {
       --require-label) shift; req_labels+=("$1") ;;
       --require-linked-issue) require_linked_issue="true" ;;
       --min-reviewers) shift; min_reviewers="$1" ;;
+      --format) shift; format="$1" ;;
       --config) shift ;;
       --help|-h) pr_gates_help; exit 0 ;;
       *) echo "error: unknown flag for pr-gates: $1" >&2; pr_gates_help >&2; exit 1 ;;
     esac
     shift
   done
-
   [[ -n "$pr" ]] || { echo "error: --pr is required" >&2; exit 1; }
   [[ "$min_reviewers" =~ ^[0-9]+$ ]] || { echo "error: --min-reviewers must be >= 0" >&2; exit 1; }
-  if [[ -z "$repo" ]]; then
-    repo="$(autodetect_repo)" || { echo "error: unable to auto-detect GitHub repo from origin; pass --repo owner/name" >&2; exit 1; }
-  fi
+  [[ "$format" == "text" || "$format" == "json" ]] || { echo "error: --format must be text|json" >&2; exit 1; }
+  [[ -n "$repo" ]] || repo="$(autodetect_repo)" || { echo "error: unable to auto-detect GitHub repo from origin; pass --repo owner/name" >&2; exit 1; }
 
-  local pr_json
-  pr_json="$(gh pr view "$pr" --repo "$repo" --json labels,closingIssuesReferences,reviews)"
-  python3 - <<'PY' "$pr_json" "$require_linked_issue" "$min_reviewers" "${req_labels[*]}"
+  local pr_json; pr_json="$(gh_pr_view "$pr" "$repo")"
+  python3 - <<'PY' "$pr_json" "$require_linked_issue" "$min_reviewers" "${req_labels[*]}" "$format"
 import json, sys
-j=json.loads(sys.argv[1])
-need_issue = sys.argv[2].lower()=='true'
-min_rev = int(sys.argv[3])
-req_labels=[x for x in sys.argv[4].split() if x]
-labels={x.get('name') for x in j.get('labels',[])}
-issues=j.get('closingIssuesReferences',[])
-approved={r.get('author',{}).get('login') for r in j.get('reviews',[]) if r.get('state')=='APPROVED'}
+j=json.loads(sys.argv[1]); need_issue=sys.argv[2].lower()=='true'; min_rev=int(sys.argv[3]); req_labels=[x for x in sys.argv[4].split() if x]; fmt=sys.argv[5]
+labels={x.get('name') for x in j.get('labels',[])}; issues=j.get('closingIssuesReferences',[]); approved={r.get('author',{}).get('login') for r in j.get('reviews',[]) if r.get('state')=='APPROVED'}
 fail=[]
 for l in req_labels:
-  if l not in labels:
-    fail.append(f"missing required label: {l}")
-if need_issue and not issues:
-  fail.append("no linked issue")
-if len([x for x in approved if x]) < min_rev:
-  fail.append(f"approved reviewers below minimum (need={min_rev}, got={len([x for x in approved if x])})")
-if fail:
-  print("PR gate failures:")
-  for f in fail: print(f"- {f}")
-  raise SystemExit(2)
-print("PR gates passed.")
+  if l not in labels: fail.append(f"missing required label: {l}")
+approved_count=len([x for x in approved if x])
+if need_issue and not issues: fail.append("no linked issue")
+if approved_count < min_rev: fail.append(f"approved reviewers below minimum (need={min_rev}, got={approved_count})")
+if fmt=='json':
+  print(json.dumps({"ok":len(fail)==0,"failures":fail,"approvedReviewers":approved_count,"requiredReviewers":min_rev}))
+else:
+  if fail:
+    print("PR gate failures:")
+    [print(f"- {f}") for f in fail]
+  else:
+    print("PR gates passed.")
+if fail: raise SystemExit(2)
 PY
 }
 
 cmd_bulk() {
-  local org=""
-  local pattern=".*"
-  local action="audit"
-  local base="main"
-  local do_fix="false"
+  local org="" pattern=".*" action="audit" base="main" do_fix="false" format="text"
   local topics=()
-
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --org) shift; org="$1" ;;
@@ -947,93 +797,224 @@ cmd_bulk() {
       --action) shift; action="$1" ;;
       --base) shift; base="$1" ;;
       --fix) do_fix="true" ;;
+      --format) shift; format="$1" ;;
       --help|-h) bulk_help; exit 0 ;;
       *) echo "error: unknown flag for bulk: $1" >&2; bulk_help >&2; exit 1 ;;
     esac
     shift
   done
-
   [[ -n "$org" ]] || { echo "error: --org is required" >&2; exit 1; }
   [[ "$action" == "audit" || "$action" == "apply" ]] || { echo "error: --action must be audit|apply" >&2; exit 1; }
+  [[ "$format" == "text" || "$format" == "json" ]] || { echo "error: --format must be text|json" >&2; exit 1; }
 
-  local repos_json
-  repos_json="$(gh api "orgs/${org}/repos" --paginate)"
-  local repo_lines
-  repo_lines="$(python3 - <<'PY' "$repos_json" "$pattern" "${topics[*]}"
+  local repos_json; repos_json="$(gh_api "orgs/${org}/repos" --paginate)"
+  local repo_lines; repo_lines="$(python3 - <<'PY' "$repos_json" "$pattern" "${topics[*]}"
 import json, re, sys
-rows = json.loads(sys.argv[1])
-pattern = re.compile(sys.argv[2])
-topics = [t for t in sys.argv[3].split() if t]
+rows = json.loads(sys.argv[1]); pattern = re.compile(sys.argv[2]); topics=[t for t in sys.argv[3].split() if t]
 for r in rows:
-    name = r.get('name','')
-    if not pattern.search(name):
-        continue
-    rt = set(r.get('topics') or [])
-    if topics and any(t not in rt for t in topics):
-        continue
+    name=r.get('name','')
+    if not pattern.search(name): continue
+    rt=set(r.get('topics') or [])
+    if topics and any(t not in rt for t in topics): continue
     print(r.get('full_name'))
 PY
 )"
+  [[ -n "$repo_lines" ]] || { [[ "$format" == "json" ]] && echo '{"count":0,"results":[]}' || echo "No repos matched filters."; return; }
 
-  [[ -n "$repo_lines" ]] || { echo "No repos matched filters."; return; }
+  local results=()
   while IFS= read -r repo; do
     [[ -z "$repo" ]] && continue
-    echo "==> ${repo}"
     if [[ "$action" == "audit" ]]; then
-      "$0" audit --repo "$repo" --base "$base" || true
-    else
-      if [[ "$do_fix" == "true" ]]; then
-        "$0" apply --repo "$repo" --base "$base" --fix || true
-      else
-        "$0" apply --repo "$repo" --base "$base" || true
+      local o rc
+      set +e; o="$($0 audit --repo "$repo" --base "$base" --format json 2>&1)"; rc=$?; set -e
+      if [[ "$format" == "text" ]]; then
+        echo "==> ${repo}"
+        echo "$o"
       fi
+      results+=("{\"repo\":$(json_escape "$repo"),\"exitCode\":${rc},\"result\":${o}}")
+    else
+      local o rc
+      set +e
+      if [[ "$do_fix" == "true" ]]; then o="$($0 apply --repo "$repo" --base "$base" --fix --format json 2>&1)"; else o="$($0 apply --repo "$repo" --base "$base" --format json 2>&1)"; fi
+      rc=$?
+      set -e
+      [[ "$format" == "text" ]] && { echo "==> ${repo}"; echo "$o"; }
+      results+=("{\"repo\":$(json_escape "$repo"),\"exitCode\":${rc},\"result\":${o}}")
     fi
   done <<<"$repo_lines"
+
+  if [[ "$format" == "json" ]]; then
+    local joined="$(IFS=,; echo "${results[*]:-}")"
+    printf '{"count":%d,"action":%s,"results":[%s]}\n' "$(wc -l <<<"$repo_lines" | tr -d ' ')" "$(json_escape "$action")" "$joined"
+  fi
+}
+
+cmd_doctor() {
+  local repo="" format="text"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --repo) shift; repo="$1" ;;
+      --format) shift; format="$1" ;;
+      --help|-h) doctor_help; exit 0 ;;
+      *) echo "error: unknown flag for doctor: $1" >&2; doctor_help >&2; exit 1 ;;
+    esac
+    shift
+  done
+  [[ "$format" == "text" || "$format" == "json" ]] || { echo "error: --format must be text|json" >&2; exit 1; }
+
+  local gh_ok="false" auth_ok="false" repo_ok="false" git_ok="false" scopes=""
+  local fixes=() checks=()
+  if command -v gh >/dev/null 2>&1; then gh_ok="true"; else fixes+=("Install GitHub CLI: https://cli.github.com/"); fi
+  if [[ "$gh_ok" == "true" ]]; then
+    local a; a="$(gh_auth_status_text || true)"
+    if grep -qi "Logged in to github.com" <<<"$a"; then auth_ok="true"; else fixes+=("Run: gh auth login"); fi
+    scopes="$(fetch_scope_header || true)"
+    if [[ -z "$scopes" ]]; then fixes+=("Could not detect token scopes. Try: gh auth refresh -h github.com -s repo,read:org"); fi
+  fi
+
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git_ok="true"; else fixes+=("Run inside a git repository."); fi
+  if [[ -z "$repo" && "$git_ok" == "true" ]]; then repo="$(autodetect_repo || true)"; fi
+  if [[ -n "$repo" ]]; then repo_ok="true"; else fixes+=("Set origin to GitHub or pass --repo owner/name."); fi
+
+  if [[ "$scopes" != *"repo"* ]]; then fixes+=("Token missing 'repo' scope; run: gh auth refresh -h github.com -s repo"); fi
+
+  local ok="false"
+  [[ "$gh_ok" == "true" && "$auth_ok" == "true" && "$repo_ok" == "true" ]] && ok="true"
+
+  if [[ "$format" == "json" ]]; then
+    python3 - <<'PY' "$ok" "$gh_ok" "$auth_ok" "$git_ok" "$repo_ok" "$repo" "$scopes" "${fixes[*]}"
+import json,sys
+print(json.dumps({"ok":sys.argv[1]=='true',"checks":{"ghInstalled":sys.argv[2]=='true',"ghAuthenticated":sys.argv[3]=='true',"inGitRepo":sys.argv[4]=='true',"repoDetected":sys.argv[5]=='true'},"repo":sys.argv[6] or None,"tokenScopes": [x.strip() for x in sys.argv[7].split(',') if x.strip()],"fixes":[x for x in sys.argv[8].split('  ') if x]}))
+PY
+  else
+    echo "branchwarden doctor"
+    echo "- gh installed: $gh_ok"
+    echo "- gh authenticated: $auth_ok"
+    echo "- in git repo: $git_ok"
+    echo "- repo detected: $repo_ok${repo:+ ($repo)}"
+    echo "- token scopes: ${scopes:-unknown}"
+    if (( ${#fixes[@]} > 0 )); then
+      echo ""
+      echo "Recommended fixes:"
+      printf -- "- %s\n" "${fixes[@]}"
+    else
+      echo "\nNo issues detected."
+    fi
+  fi
+
+  [[ "$ok" == "true" ]] || exit 2
+}
+
+cmd_init() {
+  local target="." workflow="both" force="false"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --path) shift; target="$1" ;;
+      --workflow) shift; workflow="$1" ;;
+      --force) force="true" ;;
+      --help|-h) init_help; exit 0 ;;
+      *) echo "error: unknown flag for init: $1" >&2; init_help >&2; exit 1 ;;
+    esac
+    shift
+  done
+  case "$workflow" in audit|enforce|both) ;; *) echo "error: --workflow must be audit|enforce|both" >&2; exit 1 ;; esac
+
+  mkdir -p "$target/.github/workflows"
+  local cfg="$target/branchwarden.config"
+  if [[ -f "$cfg" && "$force" != "true" ]]; then echo "error: $cfg exists (use --force to overwrite)" >&2; exit 1; fi
+  cat > "$cfg" <<'CFG'
+# branchwarden defaults
+BASE=origin/main
+MODE=both
+DAYS=30
+PRESET=balanced
+REQUIRED_CHECKS=CI / test
+REQUIRED_APPROVALS=1
+REQUIRE_CONVERSATION_RESOLUTION=true
+ENFORCE_ADMINS=true
+CFG
+
+  if [[ "$workflow" == "audit" || "$workflow" == "both" ]]; then
+    cat > "$target/.github/workflows/branchwarden-audit.yml" <<'YML'
+name: branchwarden-audit
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 4 * * 1'
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./branchwarden audit --repo "${{ github.repository }}" --base main
+YML
+  fi
+
+  if [[ "$workflow" == "enforce" || "$workflow" == "both" ]]; then
+    cat > "$target/.github/workflows/branchwarden-enforce.yml" <<'YML'
+name: branchwarden-enforce
+on:
+  workflow_dispatch:
+jobs:
+  enforce:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      administration: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./branchwarden apply --repo "${{ github.repository }}" --base main --fix
+YML
+  fi
+
+  echo "Initialized branchwarden scaffolding in $target"
+}
+
+cmd_completion() {
+  [[ $# -eq 1 ]] || { completion_help >&2; exit 1; }
+  case "$1" in
+    bash)
+      cat <<'BASH'
+_branchwarden_complete() {
+  local cur prev words cword
+  _init_completion || return
+  local subs="status stale clean audit apply bulk pr-gates doctor init completion"
+  if [[ $cword -eq 1 ]]; then COMPREPLY=( $(compgen -W "$subs" -- "$cur") ); return; fi
+}
+complete -F _branchwarden_complete branchwarden
+BASH
+      ;;
+    zsh)
+      cat <<'ZSH'
+#compdef branchwarden
+_arguments '1:subcommand:(status stale clean audit apply bulk pr-gates doctor init completion)'
+ZSH
+      ;;
+    fish)
+      cat <<'FISH'
+complete -c branchwarden -f -a "status stale clean audit apply bulk pr-gates doctor init completion"
+FISH
+      ;;
+    *) completion_help >&2; exit 1 ;;
+  esac
 }
 
 main() {
-  if [[ $# -lt 1 ]]; then
-    usage
-    exit 2
-  fi
-
+  if [[ $# -lt 1 ]]; then usage; exit 2; fi
   local sub="$1"; shift
   case "$sub" in
-    help|-h|--help)
-      usage
-      ;;
-    status)
-      ensure_git_repo
-      cmd_status "$@"
-      ;;
-    stale)
-      ensure_git_repo
-      cmd_stale "$@"
-      ;;
-    clean)
-      ensure_git_repo
-      cmd_clean "$@"
-      ;;
-    audit)
-      ensure_git_repo
-      cmd_audit "$@"
-      ;;
-    apply)
-      ensure_git_repo
-      cmd_apply "$@"
-      ;;
-    bulk)
-      cmd_bulk "$@"
-      ;;
-    pr-gates)
-      ensure_git_repo
-      cmd_pr_gates "$@"
-      ;;
-    *)
-      echo "error: unknown subcommand '$sub'" >&2
-      usage >&2
-      exit 1
-      ;;
+    help|-h|--help) usage ;;
+    status) ensure_git_repo; cmd_status "$@" ;;
+    stale) ensure_git_repo; cmd_stale "$@" ;;
+    clean) ensure_git_repo; cmd_clean "$@" ;;
+    audit) ensure_git_repo; cmd_audit "$@" ;;
+    apply) ensure_git_repo; cmd_apply "$@" ;;
+    bulk) cmd_bulk "$@" ;;
+    pr-gates) ensure_git_repo; cmd_pr_gates "$@" ;;
+    doctor) cmd_doctor "$@" ;;
+    init) cmd_init "$@" ;;
+    completion) cmd_completion "$@" ;;
+    *) echo "error: unknown subcommand '$sub'" >&2; usage >&2; exit 1 ;;
   esac
 }
 
