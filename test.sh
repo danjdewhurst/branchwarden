@@ -105,6 +105,13 @@ test_audit_help() {
   assert_contains "$out" "Usage: branchwarden audit"
 }
 
+test_apply_help() {
+  local out
+  out="$($TOOL apply --help)"
+  assert_contains "$out" "Usage: branchwarden apply"
+  assert_contains "$out" "--fix"
+}
+
 test_presets_and_config() {
   local repo
   repo="$(setup_repo)"
@@ -135,5 +142,6 @@ echo "Running tests..."
 test_validation_errors
 test_status_and_clean_flow
 test_audit_help
+test_apply_help
 test_presets_and_config
 echo "All tests passed."

@@ -89,6 +89,15 @@ Detect branch protection drift versus desired policy:
 branchwarden audit --repo danjdewhurst/branchwarden --base main
 ```
 
+### 5) `apply`
+
+Preview branch-protection drift and auto-fix when needed:
+
+```bash
+branchwarden apply --repo danjdewhurst/branchwarden --base main
+branchwarden apply --repo danjdewhurst/branchwarden --base main --fix
+```
+
 Defaults expect:
 - required check: `CI / test`
 - required approvals: `1`
@@ -153,7 +162,7 @@ Checks:
 - [x] Protected-branch presets (`strict`, `balanced`, `solo-dev`) and custom protection patterns
 - [x] Config file support (`branchwarden.config`) for team policy defaults
 - [x] Drift detection (`audit`) against desired policy and live repo state
-- [ ] Auto-fix mode (`apply --fix`) to enforce policy quickly
+- [x] Auto-fix mode (`apply --fix`) to enforce policy quickly
 - [ ] GitHub Rulesets support (alongside classic branch protection)
 - [ ] Org/bulk mode for repos by topic/pattern
 - [ ] PR quality gates (labels, linked issue, reviewer minimums)
