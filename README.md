@@ -81,6 +81,23 @@ Modes:
 - `gone`
 - `both`
 
+### 4) `audit`
+
+Detect branch protection drift versus desired policy:
+
+```bash
+branchwarden audit --repo danjdewhurst/branchwarden --base main
+```
+
+Defaults expect:
+- required check: `CI / test`
+- required approvals: `1`
+- conversation resolution: `true`
+- enforce admins: `true`
+
+Override via `branchwarden.config` using:
+`REQUIRED_CHECKS`, `REQUIRED_APPROVALS`, `REQUIRE_CONVERSATION_RESOLUTION`, `ENFORCE_ADMINS`.
+
 ## Config file (`branchwarden.config`)
 
 You can define team defaults in a simple config file at repo root:
@@ -135,7 +152,7 @@ Checks:
 
 - [x] Protected-branch presets (`strict`, `balanced`, `solo-dev`) and custom protection patterns
 - [x] Config file support (`branchwarden.config`) for team policy defaults
-- [ ] Drift detection (`audit`) against desired policy and live repo state
+- [x] Drift detection (`audit`) against desired policy and live repo state
 - [ ] Auto-fix mode (`apply --fix`) to enforce policy quickly
 - [ ] GitHub Rulesets support (alongside classic branch protection)
 - [ ] Org/bulk mode for repos by topic/pattern
