@@ -19,30 +19,40 @@ TXT
 
 status_help() {
   cat <<'TXT'
-Usage: branchwarden status [--base <ref>]
+Usage: branchwarden status [--base <ref>] [--preset strict|balanced|solo-dev] [--protect <pattern>] [--config <path>]
 
 Flags:
-  --base <ref>   base branch to test merge status against (default: origin/main)
+  --base <ref>       base branch to test merge status against (default: origin/main)
+  --preset <name>    protected-branch preset: strict|balanced|solo-dev (default: balanced)
+  --protect <pat>    additional protected branch pattern (repeatable; supports *)
+  --config <path>    config file path (default: ./branchwarden.config)
 TXT
 }
 
 stale_help() {
   cat <<'TXT'
-Usage: branchwarden stale [--days <n>]
+Usage: branchwarden stale [--days <n>] [--preset strict|balanced|solo-dev] [--protect <pattern>] [--config <path>]
 
 Flags:
-  --days <n>   minimum age in days since last commit (default: 30)
+  --days <n>         minimum age in days since last commit (default: 30)
+  --preset <name>    protected-branch preset: strict|balanced|solo-dev (default: balanced)
+  --protect <pat>    additional protected branch pattern (repeatable; supports *)
+  --config <path>    config file path (default: ./branchwarden.config)
 TXT
 }
 
 clean_help() {
   cat <<'TXT'
-Usage: branchwarden clean [--base <ref>] [--mode merged|gone|both] [--yes]
+Usage: branchwarden clean [--base <ref>] [--mode merged|gone|both] [--yes] [--plan text|json] [--preset strict|balanced|solo-dev] [--protect <pattern>] [--config <path>]
 
 Flags:
   --base <ref>             base branch to test merge status against (default: origin/main)
   --mode merged|gone|both  what to delete (default: both)
   --yes                    perform deletion (default is dry-run)
+  --plan text|json         dry-run planner output format (default: text)
+  --preset <name>          protected-branch preset: strict|balanced|solo-dev (default: balanced)
+  --protect <pat>          additional protected branch pattern (repeatable; supports *)
+  --config <path>          config file path (default: ./branchwarden.config)
 TXT
 }
 
@@ -53,11 +63,86 @@ ensure_git_repo() {
   fi
 }
 
-is_protected_branch() {
-  case "$1" in
-    main|master|develop|dev) return 0 ;;
-    *) return 1 ;;
+# config defaults
+CFG_BASE=""
+CFG_DAYS=""
+CFG_MODE=""
+CFG_PRESET=""
+CFG_PROTECT=()
+
+trim() {
+  local s="$1"
+  s="${s#${s%%[![:space:]]*}}"
+  s="${s%${s##*[![:space:]]}}"
+  printf '%s' "$s"
+}
+
+append_csv_to_array() {
+  local csv="$1"
+  local -n ref_arr="$2"
+  local IFS=','
+  read -ra parts <<<"$csv"
+  local p
+  for p in "${parts[@]}"; do
+    p="$(trim "$p")"
+    [[ -n "$p" ]] && ref_arr+=("$p")
+  done
+}
+
+load_config_file() {
+  local path="$1"
+  [[ -f "$path" ]] || return 0
+
+  while IFS= read -r line; do
+    line="$(trim "$line")"
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    [[ "$line" == *=* ]] || continue
+
+    local key="${line%%=*}"
+    local val="${line#*=}"
+    key="$(trim "$key")"
+    val="$(trim "$val")"
+
+    case "$key" in
+      BASE) CFG_BASE="$val" ;;
+      DAYS) CFG_DAYS="$val" ;;
+      MODE) CFG_MODE="$val" ;;
+      PRESET) CFG_PRESET="$val" ;;
+      PROTECT) append_csv_to_array "$val" CFG_PROTECT ;;
+    esac
+  done <"$path"
+}
+
+preset_patterns() {
+  local preset="$1"
+  case "$preset" in
+    strict)
+      printf '%s\n' main master develop dev 'release/*' 'hotfix/*'
+      ;;
+    balanced)
+      printf '%s\n' main master develop dev
+      ;;
+    solo-dev)
+      printf '%s\n' main
+      ;;
+    *)
+      echo "error: --preset must be one of: strict, balanced, solo-dev" >&2
+      exit 1
+      ;;
   esac
+}
+
+branch_is_protected() {
+  local name="$1"
+  shift || true
+  local pat
+  for pat in "$@"; do
+    [[ -z "$pat" ]] && continue
+    case "$name" in
+      $pat) return 0 ;;
+    esac
+  done
+  return 1
 }
 
 branch_rows() {
@@ -71,12 +156,43 @@ merged_branches() {
 
 cmd_status() {
   local base="origin/main"
+  local preset="balanced"
+  local config_path="branchwarden.config"
+  local protect_patterns=()
+
+  # pre-scan config path
+  local i=1
+  while (( i <= $# )); do
+    local arg="${!i}"
+    if [[ "$arg" == "--config" ]]; then
+      ((i++))
+      [[ $i -le $# ]] || { echo "error: --config requires a value" >&2; exit 1; }
+      config_path="${!i}"
+    fi
+    ((i++))
+  done
+
+  load_config_file "$config_path"
+  [[ -n "$CFG_BASE" ]] && base="$CFG_BASE"
+  [[ -n "$CFG_PRESET" ]] && preset="$CFG_PRESET"
+  protect_patterns+=("${CFG_PROTECT[@]}")
+
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --base)
-        shift
-        [[ $# -gt 0 ]] || { echo "error: --base requires a value" >&2; exit 1; }
+        shift; [[ $# -gt 0 ]] || { echo "error: --base requires a value" >&2; exit 1; }
         base="$1"
+        ;;
+      --preset)
+        shift; [[ $# -gt 0 ]] || { echo "error: --preset requires a value" >&2; exit 1; }
+        preset="$1"
+        ;;
+      --protect)
+        shift; [[ $# -gt 0 ]] || { echo "error: --protect requires a value" >&2; exit 1; }
+        protect_patterns+=("$1")
+        ;;
+      --config)
+        shift; [[ $# -gt 0 ]] || { echo "error: --config requires a value" >&2; exit 1; }
         ;;
       --help|-h)
         status_help; exit 0 ;;
@@ -91,6 +207,9 @@ cmd_status() {
 
   [[ -n "$base" ]] || { echo "error: --base cannot be empty" >&2; exit 1; }
 
+  mapfile -t preset_protect < <(preset_patterns "$preset")
+  local protected=("${preset_protect[@]}" "${protect_patterns[@]}")
+
   local merged_set
   if ! merged_set="$(merged_branches "$base" 2>/tmp/branchwarden_status_err)"; then
     echo "error: could not evaluate merged branches against '$base': $(cat /tmp/branchwarden_status_err)" >&2
@@ -101,7 +220,7 @@ cmd_status() {
   echo "Branch status:"
   while IFS='|' read -r name track _unix; do
     [[ -n "$name" ]] || continue
-    is_protected_branch "$name" && continue
+    branch_is_protected "$name" "${protected[@]}" && continue
 
     local states=()
     if grep -Fxq "$name" <<<"$merged_set"; then
@@ -132,12 +251,41 @@ cmd_status() {
 
 cmd_stale() {
   local days=30
+  local preset="balanced"
+  local config_path="branchwarden.config"
+  local protect_patterns=()
+
+  local i=1
+  while (( i <= $# )); do
+    local arg="${!i}"
+    if [[ "$arg" == "--config" ]]; then
+      ((i++)); [[ $i -le $# ]] || { echo "error: --config requires a value" >&2; exit 1; }
+      config_path="${!i}"
+    fi
+    ((i++))
+  done
+
+  load_config_file "$config_path"
+  [[ -n "$CFG_DAYS" ]] && days="$CFG_DAYS"
+  [[ -n "$CFG_PRESET" ]] && preset="$CFG_PRESET"
+  protect_patterns+=("${CFG_PROTECT[@]}")
+
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --days)
-        shift
-        [[ $# -gt 0 ]] || { echo "error: --days requires a value" >&2; exit 1; }
+        shift; [[ $# -gt 0 ]] || { echo "error: --days requires a value" >&2; exit 1; }
         days="$1"
+        ;;
+      --preset)
+        shift; [[ $# -gt 0 ]] || { echo "error: --preset requires a value" >&2; exit 1; }
+        preset="$1"
+        ;;
+      --protect)
+        shift; [[ $# -gt 0 ]] || { echo "error: --protect requires a value" >&2; exit 1; }
+        protect_patterns+=("$1")
+        ;;
+      --config)
+        shift; [[ $# -gt 0 ]] || { echo "error: --config requires a value" >&2; exit 1; }
         ;;
       --help|-h)
         stale_help; exit 0 ;;
@@ -153,6 +301,9 @@ cmd_stale() {
   [[ "$days" =~ ^[0-9]+$ ]] || { echo "error: --days must be a positive integer" >&2; exit 1; }
   (( days > 0 )) || { echo "error: --days must be > 0" >&2; exit 1; }
 
+  mapfile -t preset_protect < <(preset_patterns "$preset")
+  local protected=("${preset_protect[@]}" "${protect_patterns[@]}")
+
   local now cutoff
   now=$(date +%s)
   cutoff=$(( now - (days * 86400) ))
@@ -161,7 +312,7 @@ cmd_stale() {
   echo "Stale branches (>${days} days):"
   while IFS='|' read -r name _track unix; do
     [[ -n "$name" ]] || continue
-    is_protected_branch "$name" && continue
+    branch_is_protected "$name" "${protected[@]}" && continue
     (( unix <= cutoff )) || continue
     local ts
     ts=$(date -u -d "@${unix}" +%F)
@@ -176,21 +327,54 @@ cmd_clean() {
   local base="origin/main"
   local mode="both"
   local yes="false"
+  local plan="text"
+  local preset="balanced"
+  local config_path="branchwarden.config"
+  local protect_patterns=()
+
+  local i=1
+  while (( i <= $# )); do
+    local arg="${!i}"
+    if [[ "$arg" == "--config" ]]; then
+      ((i++)); [[ $i -le $# ]] || { echo "error: --config requires a value" >&2; exit 1; }
+      config_path="${!i}"
+    fi
+    ((i++))
+  done
+
+  load_config_file "$config_path"
+  [[ -n "$CFG_BASE" ]] && base="$CFG_BASE"
+  [[ -n "$CFG_MODE" ]] && mode="$CFG_MODE"
+  [[ -n "$CFG_PRESET" ]] && preset="$CFG_PRESET"
+  protect_patterns+=("${CFG_PROTECT[@]}")
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --base)
-        shift
-        [[ $# -gt 0 ]] || { echo "error: --base requires a value" >&2; exit 1; }
+        shift; [[ $# -gt 0 ]] || { echo "error: --base requires a value" >&2; exit 1; }
         base="$1"
         ;;
       --mode)
-        shift
-        [[ $# -gt 0 ]] || { echo "error: --mode requires a value" >&2; exit 1; }
+        shift; [[ $# -gt 0 ]] || { echo "error: --mode requires a value" >&2; exit 1; }
         mode="$1"
         ;;
       --yes)
         yes="true"
+        ;;
+      --plan)
+        shift; [[ $# -gt 0 ]] || { echo "error: --plan requires a value" >&2; exit 1; }
+        plan="$1"
+        ;;
+      --preset)
+        shift; [[ $# -gt 0 ]] || { echo "error: --preset requires a value" >&2; exit 1; }
+        preset="$1"
+        ;;
+      --protect)
+        shift; [[ $# -gt 0 ]] || { echo "error: --protect requires a value" >&2; exit 1; }
+        protect_patterns+=("$1")
+        ;;
+      --config)
+        shift; [[ $# -gt 0 ]] || { echo "error: --config requires a value" >&2; exit 1; }
         ;;
       --help|-h)
         clean_help; exit 0 ;;
@@ -208,6 +392,13 @@ cmd_clean() {
     merged|gone|both) ;;
     *) echo "error: --mode must be one of: merged, gone, both" >&2; exit 1 ;;
   esac
+  case "$plan" in
+    text|json) ;;
+    *) echo "error: --plan must be one of: text, json" >&2; exit 1 ;;
+  esac
+
+  mapfile -t preset_protect < <(preset_patterns "$preset")
+  local protected=("${preset_protect[@]}" "${protect_patterns[@]}")
 
   local merged_set
   if ! merged_set="$(merged_branches "$base" 2>/tmp/branchwarden_clean_err)"; then
@@ -218,7 +409,7 @@ cmd_clean() {
   local candidates=()
   while IFS='|' read -r name track _unix; do
     [[ -n "$name" ]] || continue
-    is_protected_branch "$name" && continue
+    branch_is_protected "$name" "${protected[@]}" && continue
 
     local should_delete="false"
     if [[ "$mode" == "merged" || "$mode" == "both" ]]; then
@@ -237,8 +428,18 @@ cmd_clean() {
   fi
 
   if [[ "$yes" != "true" ]]; then
-    echo "Dry run. Pass --yes to delete these branches:"
-    printf -- "- %s\n" "${candidates[@]}"
+    if [[ "$plan" == "json" ]]; then
+      printf '{"dryRun":true,"mode":"%s","base":"%s","count":%d,"candidates":[' "$mode" "$base" "${#candidates[@]}"
+      local idx
+      for idx in "${!candidates[@]}"; do
+        [[ "$idx" -gt 0 ]] && printf ','
+        printf '"%s"' "${candidates[$idx]}"
+      done
+      printf ']}\n'
+    else
+      echo "Dry run. Pass --yes to delete these branches:"
+      printf -- "- %s\n" "${candidates[@]}"
+    fi
     return
   fi
 
