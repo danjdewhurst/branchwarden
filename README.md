@@ -26,6 +26,14 @@ brew tap danjdewhurst/tools
 brew install branchwarden
 ```
 
+Tap maintainers can publish/update formula from this repo via:
+
+```bash
+scripts/homebrew-tap-bootstrap.sh /path/to/homebrew-tools
+```
+
+Formula source in this repo: `Formula/branchwarden.rb`
+
 ### Install script path
 
 If your team mirrors install scripts, document a pinned script path such as:
