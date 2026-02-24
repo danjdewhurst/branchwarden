@@ -36,6 +36,13 @@ Audit branch state against a base branch:
 branchwarden status --base origin/main
 ```
 
+Use protection presets or custom patterns:
+
+```bash
+branchwarden status --preset strict
+branchwarden status --protect 'release/*' --protect 'hotfix/*'
+```
+
 Shows branches that are:
 - merged,
 - upstream gone,
@@ -57,6 +64,12 @@ Dry-run cleanup by default:
 branchwarden clean --mode both
 ```
 
+Planner output as JSON:
+
+```bash
+branchwarden clean --mode both --plan json
+```
+
 Actually delete candidates:
 
 ```bash
@@ -67,6 +80,37 @@ Modes:
 - `merged`
 - `gone`
 - `both`
+
+### 4) `audit`
+
+Detect branch protection drift versus desired policy:
+
+```bash
+branchwarden audit --repo danjdewhurst/branchwarden --base main
+```
+
+Defaults expect:
+- required check: `CI / test`
+- required approvals: `1`
+- conversation resolution: `true`
+- enforce admins: `true`
+
+Override via `branchwarden.config` using:
+`REQUIRED_CHECKS`, `REQUIRED_APPROVALS`, `REQUIRE_CONVERSATION_RESOLUTION`, `ENFORCE_ADMINS`.
+
+## Config file (`branchwarden.config`)
+
+You can define team defaults in a simple config file at repo root:
+
+```ini
+BASE=origin/main
+MODE=both
+DAYS=45
+PRESET=balanced
+PROTECT=release/*,hotfix/*
+```
+
+CLI flags always override config values.
 
 ## Input -> transformation -> output
 
@@ -103,6 +147,19 @@ GitHub Actions workflow runs on:
 Checks:
 - shell syntax check (`bash -n`)
 - end-to-end test script (`./test.sh`)
+
+## Roadmap
+
+- [x] Protected-branch presets (`strict`, `balanced`, `solo-dev`) and custom protection patterns
+- [x] Config file support (`branchwarden.config`) for team policy defaults
+- [x] Drift detection (`audit`) against desired policy and live repo state
+- [ ] Auto-fix mode (`apply --fix`) to enforce policy quickly
+- [ ] GitHub Rulesets support (alongside classic branch protection)
+- [ ] Org/bulk mode for repos by topic/pattern
+- [ ] PR quality gates (labels, linked issue, reviewer minimums)
+- [x] Improved dry-run planner output (`--plan text|json`)
+- [ ] Audit report export (`--output markdown|json|sarif`)
+- [ ] Scheduled enforcement via reusable GitHub Action template
 
 ## License
 
