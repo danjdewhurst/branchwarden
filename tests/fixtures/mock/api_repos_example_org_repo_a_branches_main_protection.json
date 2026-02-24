@@ -1,0 +1,6 @@
+{
+  "required_status_checks": {"checks": [{"context": "other-check"}]},
+  "required_pull_request_reviews": {"required_approving_review_count": 0},
+  "required_conversation_resolution": {"enabled": false},
+  "enforce_admins": {"enabled": false}
+}

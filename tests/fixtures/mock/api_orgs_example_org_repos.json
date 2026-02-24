@@ -1,0 +1,4 @@
+[
+  {"name":"repo-a","full_name":"example-org/repo-a","topics":["platform"]},
+  {"name":"repo-b","full_name":"example-org/repo-b","topics":["platform"]}
+]

@@ -1,0 +1,5 @@
+{
+  "labels": [{"name":"ready"}],
+  "closingIssuesReferences": [{"number": 100}],
+  "reviews": [{"state":"APPROVED","author":{"login":"alice"}}]
+}
