@@ -13,8 +13,21 @@ Subcommands:
   stale    List branches with no commits for N days
   clean    Delete safe branches (merged/gone) with dry-run by default
   audit    Detect GitHub branch-protection drift vs desired policy
+  apply    Apply desired branch-protection policy (use --fix to enforce)
 
 Run 'branchwarden <subcommand> --help' for details.
+TXT
+}
+
+apply_help() {
+  cat <<'TXT'
+Usage: branchwarden apply [--repo <owner/name>] [--base <branch>] [--fix] [--config <path>]
+
+Flags:
+  --repo <owner/name>   GitHub repo (auto-detected from origin remote if omitted)
+  --base <branch>       branch to enforce protection for (default: main)
+  --fix                 apply changes via GitHub API (default: drift preview only)
+  --config <path>       config file path (default: ./branchwarden.config)
 TXT
 }
 
@@ -580,6 +593,150 @@ print("No drift: branch protection matches desired policy.")
 PY
 }
 
+cmd_apply() {
+  local repo=""
+  local base="main"
+  local do_fix="false"
+  local config_path="branchwarden.config"
+
+  local i=1
+  while (( i <= $# )); do
+    local arg="${!i}"
+    if [[ "$arg" == "--config" ]]; then
+      ((i++)); [[ $i -le $# ]] || { echo "error: --config requires a value" >&2; exit 1; }
+      config_path="${!i}"
+    fi
+    ((i++))
+  done
+
+  load_config_file "$config_path"
+
+  local required_checks="CI / test"
+  local required_approvals="1"
+  local require_conversation_resolution="true"
+  local enforce_admins="true"
+
+  [[ -n "$CFG_REQUIRED_CHECKS" ]] && required_checks="$CFG_REQUIRED_CHECKS"
+  [[ -n "$CFG_REQUIRED_APPROVALS" ]] && required_approvals="$CFG_REQUIRED_APPROVALS"
+  [[ -n "$CFG_REQUIRE_CONVERSATION_RESOLUTION" ]] && require_conversation_resolution="$CFG_REQUIRE_CONVERSATION_RESOLUTION"
+  [[ -n "$CFG_ENFORCE_ADMINS" ]] && enforce_admins="$CFG_ENFORCE_ADMINS"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --repo)
+        shift; [[ $# -gt 0 ]] || { echo "error: --repo requires a value" >&2; exit 1; }
+        repo="$1"
+        ;;
+      --base)
+        shift; [[ $# -gt 0 ]] || { echo "error: --base requires a value" >&2; exit 1; }
+        base="$1"
+        ;;
+      --fix)
+        do_fix="true"
+        ;;
+      --config)
+        shift; [[ $# -gt 0 ]] || { echo "error: --config requires a value" >&2; exit 1; }
+        ;;
+      --help|-h)
+        apply_help; exit 0 ;;
+      *)
+        echo "error: unknown flag for apply: $1" >&2
+        apply_help >&2
+        exit 1
+        ;;
+    esac
+    shift
+  done
+
+  if [[ -z "$repo" ]]; then
+    local remote_url
+    remote_url="$(git remote get-url origin 2>/dev/null || true)"
+    if [[ "$remote_url" =~ github.com[:/]([^/]+/[^/.]+)(\.git)?$ ]]; then
+      repo="${BASH_REMATCH[1]}"
+    else
+      echo "error: unable to auto-detect GitHub repo from origin; pass --repo owner/name" >&2
+      exit 1
+    fi
+  fi
+
+  local protection_json
+  if ! protection_json="$(gh api repos/${repo}/branches/${base}/protection 2>/tmp/branchwarden_apply_err)"; then
+    echo "error: could not fetch branch protection for ${repo}:${base}: $(cat /tmp/branchwarden_apply_err)" >&2
+    exit 1
+  fi
+
+  local payload_file
+  payload_file="$(mktemp)"
+  local drift_rc=0
+  set +e
+  python3 - <<'PY' "$protection_json" "$required_checks" "$required_approvals" "$require_conversation_resolution" "$enforce_admins" "$payload_file"
+import json, sys
+actual = json.loads(sys.argv[1])
+want_checks = [c.strip() for c in sys.argv[2].split(',') if c.strip()]
+want_approvals = int(sys.argv[3])
+want_conv = sys.argv[4].lower() == 'true'
+want_admins = sys.argv[5].lower() == 'true'
+payload_file = sys.argv[6]
+
+act_checks = sorted([(c.get('context') or '') for c in actual.get('required_status_checks', {}).get('checks', [])])
+if not act_checks:
+    act_checks = sorted(actual.get('required_status_checks', {}).get('contexts', []))
+act_approvals = actual.get('required_pull_request_reviews', {}).get('required_approving_review_count', 0)
+act_conv = actual.get('required_conversation_resolution', {}).get('enabled', False)
+act_admins = actual.get('enforce_admins', {}).get('enabled', False)
+
+drift = []
+if sorted(want_checks) != act_checks:
+    drift.append(f"required checks mismatch (want={want_checks}, got={act_checks})")
+if want_approvals != act_approvals:
+    drift.append(f"required approvals mismatch (want={want_approvals}, got={act_approvals})")
+if want_conv != act_conv:
+    drift.append(f"conversation resolution mismatch (want={want_conv}, got={act_conv})")
+if want_admins != act_admins:
+    drift.append(f"enforce admins mismatch (want={want_admins}, got={act_admins})")
+
+payload = {
+  "required_status_checks": {"strict": True, "checks": [{"context": c} for c in want_checks]},
+  "enforce_admins": want_admins,
+  "required_pull_request_reviews": {
+    "dismiss_stale_reviews": True,
+    "require_code_owner_reviews": False,
+    "required_approving_review_count": want_approvals,
+    "require_last_push_approval": False
+  },
+  "restrictions": None,
+  "required_conversation_resolution": want_conv
+}
+with open(payload_file, 'w', encoding='utf-8') as f:
+    json.dump(payload, f)
+
+if drift:
+    print("DRIFT detected:")
+    for line in drift:
+        print(f"- {line}")
+    sys.exit(2)
+
+print("No drift: branch protection already matches desired policy.")
+PY
+  drift_rc=$?
+  set -e
+
+  if [[ "$drift_rc" -eq 0 ]]; then
+    rm -f "$payload_file"
+    return
+  fi
+
+  if [[ "$do_fix" != "true" ]]; then
+    echo "Preview only. Re-run with --fix to apply this policy."
+    rm -f "$payload_file"
+    exit 2
+  fi
+
+  gh api -X PUT "repos/${repo}/branches/${base}/protection" --input "$payload_file" >/dev/null
+  rm -f "$payload_file"
+  echo "Applied policy to ${repo}:${base}"
+}
+
 main() {
   if [[ $# -lt 1 ]]; then
     usage
@@ -606,6 +763,10 @@ main() {
     audit)
       ensure_git_repo
       cmd_audit "$@"
+      ;;
+    apply)
+      ensure_git_repo
+      cmd_apply "$@"
       ;;
     *)
       echo "error: unknown subcommand '$sub'" >&2
