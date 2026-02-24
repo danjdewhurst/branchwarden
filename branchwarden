@@ -15,6 +15,7 @@ Subcommands:
   audit    Detect GitHub branch-protection drift vs desired policy
   apply    Apply desired branch-protection policy (use --fix to enforce)
   bulk     Run audit/apply across org repos filtered by topic/pattern
+  pr-gates Validate PR quality gates (labels, linked issue, reviewer minimums)
 
 Run 'branchwarden <subcommand> --help' for details.
 TXT
@@ -44,6 +45,19 @@ Flags:
   --action <mode>       audit or apply (default: audit)
   --base <branch>       branch (default: main)
   --fix                 when --action apply, enforce changes
+TXT
+}
+
+pr_gates_help() {
+  cat <<'TXT'
+Usage: branchwarden pr-gates --pr <number> [--repo <owner/name>] [--require-label <name>] [--require-linked-issue] [--min-reviewers <n>] [--config <path>]
+
+Flags:
+  --pr <number>             pull request number (required)
+  --repo <owner/name>       GitHub repo (auto-detected from origin remote if omitted)
+  --require-label <name>    required PR label (repeatable)
+  --require-linked-issue    require at least one linked issue
+  --min-reviewers <n>       minimum approved reviewers
 TXT
 }
 
@@ -100,6 +114,9 @@ Config keys for policy:
   REQUIRED_APPROVALS=<n>
   REQUIRE_CONVERSATION_RESOLUTION=true|false
   ENFORCE_ADMINS=true|false
+  REQUIRED_LABELS=<label>[,<label>...]
+  REQUIRE_LINKED_ISSUE=true|false
+  MIN_REVIEWERS=<n>
 TXT
 }
 
@@ -120,6 +137,9 @@ CFG_REQUIRED_CHECKS=""
 CFG_REQUIRED_APPROVALS=""
 CFG_REQUIRE_CONVERSATION_RESOLUTION=""
 CFG_ENFORCE_ADMINS=""
+CFG_REQUIRED_LABELS=""
+CFG_REQUIRE_LINKED_ISSUE=""
+CFG_MIN_REVIEWERS=""
 
 trim() {
   local s="$1"
@@ -164,6 +184,9 @@ load_config_file() {
       REQUIRED_APPROVALS) CFG_REQUIRED_APPROVALS="$val" ;;
       REQUIRE_CONVERSATION_RESOLUTION) CFG_REQUIRE_CONVERSATION_RESOLUTION="$val" ;;
       ENFORCE_ADMINS) CFG_ENFORCE_ADMINS="$val" ;;
+      REQUIRED_LABELS) CFG_REQUIRED_LABELS="$val" ;;
+      REQUIRE_LINKED_ISSUE) CFG_REQUIRE_LINKED_ISSUE="$val" ;;
+      MIN_REVIEWERS) CFG_MIN_REVIEWERS="$val" ;;
     esac
   done <"$path"
 }
@@ -814,6 +837,76 @@ PY
   echo "Applied policy to ${repo}:${base} (rulesets matching branch: ${rulesets_count})"
 }
 
+cmd_pr_gates() {
+  local pr=""
+  local repo=""
+  local config_path="branchwarden.config"
+  local require_linked_issue="false"
+  local min_reviewers="1"
+  local req_labels=()
+
+  local i=1
+  while (( i <= $# )); do
+    local arg="${!i}"
+    if [[ "$arg" == "--config" ]]; then
+      ((i++)); [[ $i -le $# ]] || { echo "error: --config requires a value" >&2; exit 1; }
+      config_path="${!i}"
+    fi
+    ((i++))
+  done
+  load_config_file "$config_path"
+
+  [[ -n "$CFG_REQUIRED_LABELS" ]] && append_csv_to_array "$CFG_REQUIRED_LABELS" req_labels
+  [[ -n "$CFG_REQUIRE_LINKED_ISSUE" ]] && require_linked_issue="$CFG_REQUIRE_LINKED_ISSUE"
+  [[ -n "$CFG_MIN_REVIEWERS" ]] && min_reviewers="$CFG_MIN_REVIEWERS"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --pr) shift; pr="$1" ;;
+      --repo) shift; repo="$1" ;;
+      --require-label) shift; req_labels+=("$1") ;;
+      --require-linked-issue) require_linked_issue="true" ;;
+      --min-reviewers) shift; min_reviewers="$1" ;;
+      --config) shift ;;
+      --help|-h) pr_gates_help; exit 0 ;;
+      *) echo "error: unknown flag for pr-gates: $1" >&2; pr_gates_help >&2; exit 1 ;;
+    esac
+    shift
+  done
+
+  [[ -n "$pr" ]] || { echo "error: --pr is required" >&2; exit 1; }
+  [[ "$min_reviewers" =~ ^[0-9]+$ ]] || { echo "error: --min-reviewers must be >= 0" >&2; exit 1; }
+  if [[ -z "$repo" ]]; then
+    repo="$(autodetect_repo)" || { echo "error: unable to auto-detect GitHub repo from origin; pass --repo owner/name" >&2; exit 1; }
+  fi
+
+  local pr_json
+  pr_json="$(gh pr view "$pr" --repo "$repo" --json labels,closingIssuesReferences,reviews)"
+  python3 - <<'PY' "$pr_json" "$require_linked_issue" "$min_reviewers" "${req_labels[*]}"
+import json, sys
+j=json.loads(sys.argv[1])
+need_issue = sys.argv[2].lower()=='true'
+min_rev = int(sys.argv[3])
+req_labels=[x for x in sys.argv[4].split() if x]
+labels={x.get('name') for x in j.get('labels',[])}
+issues=j.get('closingIssuesReferences',[])
+approved={r.get('author',{}).get('login') for r in j.get('reviews',[]) if r.get('state')=='APPROVED'}
+fail=[]
+for l in req_labels:
+  if l not in labels:
+    fail.append(f"missing required label: {l}")
+if need_issue and not issues:
+  fail.append("no linked issue")
+if len([x for x in approved if x]) < min_rev:
+  fail.append(f"approved reviewers below minimum (need={min_rev}, got={len([x for x in approved if x])})")
+if fail:
+  print("PR gate failures:")
+  for f in fail: print(f"- {f}")
+  raise SystemExit(2)
+print("PR gates passed.")
+PY
+}
+
 cmd_bulk() {
   local org=""
   local pattern=".*"
@@ -907,6 +1000,10 @@ main() {
       ;;
     bulk)
       cmd_bulk "$@"
+      ;;
+    pr-gates)
+      ensure_git_repo
+      cmd_pr_gates "$@"
       ;;
     *)
       echo "error: unknown subcommand '$sub'" >&2
