@@ -27,6 +27,7 @@ Flags:
   --repo <owner/name>   GitHub repo (auto-detected from origin remote if omitted)
   --base <branch>       branch to enforce protection for (default: main)
   --fix                 apply changes via GitHub API (default: drift preview only)
+                        (updates classic branch protection and bootstraps ruleset when missing)
   --config <path>       config file path (default: ./branchwarden.config)
 TXT
 }
@@ -150,6 +151,42 @@ load_config_file() {
       ENFORCE_ADMINS) CFG_ENFORCE_ADMINS="$val" ;;
     esac
   done <"$path"
+}
+
+autodetect_repo() {
+  local remote_url
+  remote_url="$(git remote get-url origin 2>/dev/null || true)"
+  if [[ "$remote_url" =~ github.com[:/]([^/]+/[^/.]+)(\.git)?$ ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+fetch_matching_rulesets_count() {
+  local repo="$1"
+  local base="$2"
+  local rs_json
+  if ! rs_json="$(gh api "repos/${repo}/rulesets" --paginate 2>/dev/null || true)"; then
+    echo "0"
+    return 0
+  fi
+
+  python3 - <<'PY' "$rs_json" "$base"
+import json, sys
+rows = json.loads(sys.argv[1] or '[]')
+base = sys.argv[2]
+count = 0
+for r in rows:
+    if r.get('target') != 'branch':
+        continue
+    cond = (r.get('conditions') or {}).get('ref_name') or {}
+    include = cond.get('include') or []
+    pats = [str(x).split('/')[-1] for x in include]
+    if '~DEFAULT_BRANCH' in include or base in pats or f'refs/heads/{base}' in include:
+        count += 1
+print(count)
+PY
 }
 
 preset_patterns() {
@@ -541,15 +578,15 @@ cmd_audit() {
   done
 
   if [[ -z "$repo" ]]; then
-    local remote_url
-    remote_url="$(git remote get-url origin 2>/dev/null || true)"
-    if [[ "$remote_url" =~ github.com[:/]([^/]+/[^/.]+)(\.git)?$ ]]; then
-      repo="${BASH_REMATCH[1]}"
-    else
+    if ! repo="$(autodetect_repo)"; then
       echo "error: unable to auto-detect GitHub repo from origin; pass --repo owner/name" >&2
       exit 1
     fi
   fi
+
+  local rulesets_count
+  rulesets_count="$(fetch_matching_rulesets_count "$repo" "$base")"
+  echo "Rulesets matching ${base}: ${rulesets_count}"
 
   local protection_json
   if ! protection_json="$(gh api repos/${repo}/branches/${base}/protection 2>/tmp/branchwarden_audit_err)"; then
@@ -649,15 +686,14 @@ cmd_apply() {
   done
 
   if [[ -z "$repo" ]]; then
-    local remote_url
-    remote_url="$(git remote get-url origin 2>/dev/null || true)"
-    if [[ "$remote_url" =~ github.com[:/]([^/]+/[^/.]+)(\.git)?$ ]]; then
-      repo="${BASH_REMATCH[1]}"
-    else
+    if ! repo="$(autodetect_repo)"; then
       echo "error: unable to auto-detect GitHub repo from origin; pass --repo owner/name" >&2
       exit 1
     fi
   fi
+
+  local rulesets_count
+  rulesets_count="$(fetch_matching_rulesets_count "$repo" "$base")"
 
   local protection_json
   if ! protection_json="$(gh api repos/${repo}/branches/${base}/protection 2>/tmp/branchwarden_apply_err)"; then
@@ -734,7 +770,33 @@ PY
 
   gh api -X PUT "repos/${repo}/branches/${base}/protection" --input "$payload_file" >/dev/null
   rm -f "$payload_file"
-  echo "Applied policy to ${repo}:${base}"
+
+  if [[ "$rulesets_count" == "0" ]]; then
+    local rs_payload
+    rs_payload="$(mktemp)"
+    python3 - <<'PY' "$base" "$required_checks" "$required_approvals" >"$rs_payload"
+import json, sys
+base = sys.argv[1]
+checks = [c.strip() for c in sys.argv[2].split(',') if c.strip()]
+approvals = int(sys.argv[3])
+payload = {
+  "name": f"branchwarden-{base}",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {"ref_name": {"include": [f"refs/heads/{base}"], "exclude": []}},
+  "rules": [
+    {"type": "pull_request", "parameters": {"required_approving_review_count": approvals}},
+    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": c} for c in checks], "strict_required_status_checks_policy": True}}
+  ]
+}
+print(json.dumps(payload))
+PY
+    gh api -X POST "repos/${repo}/rulesets" --input "$rs_payload" >/dev/null || true
+    rm -f "$rs_payload"
+    echo "Created baseline repository ruleset for ${base}"
+  fi
+
+  echo "Applied policy to ${repo}:${base} (rulesets matching branch: ${rulesets_count})"
 }
 
 main() {
