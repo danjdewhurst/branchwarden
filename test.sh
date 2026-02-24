@@ -112,6 +112,13 @@ test_apply_help() {
   assert_contains "$out" "--fix"
 }
 
+test_bulk_help() {
+  local out
+  out="$($TOOL bulk --help)"
+  assert_contains "$out" "Usage: branchwarden bulk"
+  assert_contains "$out" "--org"
+}
+
 test_presets_and_config() {
   local repo
   repo="$(setup_repo)"
@@ -143,5 +150,6 @@ test_validation_errors
 test_status_and_clean_flow
 test_audit_help
 test_apply_help
+test_bulk_help
 test_presets_and_config
 echo "All tests passed."
