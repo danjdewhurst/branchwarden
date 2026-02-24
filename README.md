@@ -2,16 +2,9 @@
 
 `branchwarden` is a practical Git hygiene CLI for auditing and cleaning local branches safely.
 
-## Problem solved
-
-In busy repos, stale and merged branches accumulate and slow down day-to-day Git workflows.
-
-`branchwarden` helps you quickly:
-- audit branch health,
-- detect stale branches by age,
-- prune merged/orphaned branches with dry-run safety.
-
 ## Install / run
+
+### Quick local
 
 ```bash
 git clone git@github.com:danjdewhurst/branchwarden.git
@@ -26,110 +19,51 @@ chmod +x ./branchwarden
 install -m 0755 ./branchwarden /usr/local/bin/branchwarden
 ```
 
+### Homebrew (tap)
+
+```bash
+brew tap danjdewhurst/tools
+brew install branchwarden
+```
+
+### Install script path
+
+If your team mirrors install scripts, document a pinned script path such as:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danjdewhurst/branchwarden/main/scripts/install.sh | bash
+```
+
 ## Subcommands
 
-### 1) `status`
+- `status` — branch health (merged/gone/diverged)
+- `stale` — stale branches by age
+- `clean` — safe cleanup (dry-run default)
+- `audit` — branch-protection drift detection
+- `apply` — enforce branch-protection policy
+- `bulk` — audit/apply across org repos
+- `pr-gates` — PR quality checks
+- `doctor` — environment/auth diagnostics with fixes
+- `init` — scaffold config + workflow templates
+- `completion` — emit shell completions
 
-Audit branch state against a base branch:
+All operational subcommands support `--format text|json`.
 
-```bash
-branchwarden status --base origin/main
-```
-
-Use protection presets or custom patterns:
-
-```bash
-branchwarden status --preset strict
-branchwarden status --protect 'release/*' --protect 'hotfix/*'
-```
-
-Shows branches that are:
-- merged,
-- upstream gone,
-- ahead/behind remote.
-
-### 2) `stale`
-
-Find branches with no recent commits:
+## Examples
 
 ```bash
-branchwarden stale --days 45
-```
-
-### 3) `clean`
-
-Dry-run cleanup by default:
-
-```bash
-branchwarden clean --mode both
-```
-
-Planner output as JSON:
-
-```bash
+branchwarden status --base origin/main --format json
+branchwarden stale --days 45 --format json
 branchwarden clean --mode both --plan json
+branchwarden audit --repo owner/repo --base main --output sarif
+branchwarden apply --repo owner/repo --base main --fix --format json
+branchwarden bulk --org your-org --topic platform --action audit --format json
+branchwarden pr-gates --repo owner/repo --pr 42 --require-label ready --min-reviewers 2 --format json
+branchwarden doctor --format json
+branchwarden init --workflow both
 ```
-
-Actually delete candidates:
-
-```bash
-branchwarden clean --mode both --yes
-```
-
-Modes:
-- `merged`
-- `gone`
-- `both`
-
-### 4) `audit`
-
-Detect branch protection drift versus desired policy (classic branch protection + matching rulesets visibility):
-
-```bash
-branchwarden audit --repo danjdewhurst/branchwarden --base main
-branchwarden audit --repo danjdewhurst/branchwarden --base main --output markdown
-branchwarden audit --repo danjdewhurst/branchwarden --base main --output sarif
-```
-
-### 5) `apply`
-
-Preview branch-protection drift and auto-fix when needed:
-
-```bash
-branchwarden apply --repo danjdewhurst/branchwarden --base main
-branchwarden apply --repo danjdewhurst/branchwarden --base main --fix
-```
-
-### 6) `bulk`
-
-Audit or enforce policy across organization repos filtered by topic/pattern:
-
-```bash
-branchwarden bulk --org your-org --topic platform --pattern '^api-' --action audit
-branchwarden bulk --org your-org --topic platform --pattern '^api-' --action apply --fix
-```
-
-### 7) `pr-gates`
-
-Validate pull request quality gates:
-
-```bash
-branchwarden pr-gates --repo danjdewhurst/branchwarden --pr 42 \
-  --require-label ready --require-linked-issue --min-reviewers 2
-```
-
-Defaults expect:
-- required check: `CI / test`
-- required approvals: `1`
-- conversation resolution: `true`
-- enforce admins: `true`
-
-Override via `branchwarden.config` using:
-`REQUIRED_CHECKS`, `REQUIRED_APPROVALS`, `REQUIRE_CONVERSATION_RESOLUTION`, `ENFORCE_ADMINS`.
 
 ## Config file (`branchwarden.config`)
-
-You can define team defaults in a simple config file at repo root:
 
 ```ini
 BASE=origin/main
@@ -137,80 +71,71 @@ MODE=both
 DAYS=45
 PRESET=balanced
 PROTECT=release/*,hotfix/*
+REQUIRED_CHECKS=CI / test
+REQUIRED_APPROVALS=1
+REQUIRE_CONVERSATION_RESOLUTION=true
+ENFORCE_ADMINS=true
+REQUIRED_LABELS=ready
+REQUIRE_LINKED_ISSUE=true
+MIN_REVIEWERS=1
 ```
 
-CLI flags always override config values.
+## Shell completions
 
-## Input -> transformation -> output
+Generate and install:
 
-- **Input:** your local Git repository state (`refs/heads`, upstream tracking info, commit timestamps).
-- **Transformation:** branch classification (merged/gone/diverged/stale) with safety filtering for protected branches (`main`, `master`, `develop`, `dev`).
-- **Output:** actionable terminal report + optional branch deletion.
+```bash
+# bash
+branchwarden completion bash > /etc/bash_completion.d/branchwarden
 
-## Before / after value
+# zsh
+mkdir -p ~/.zsh/completions
+branchwarden completion zsh > ~/.zsh/completions/_branchwarden
 
-Before:
-- ad-hoc manual commands,
-- inconsistent cleanup,
-- risk of deleting the wrong branch.
+# fish
+branchwarden completion fish > ~/.config/fish/completions/branchwarden.fish
+```
 
-After:
-- repeatable branch audit,
-- safer cleanup workflow with dry-run default,
-- clearer hygiene in team repos.
+## `init` scaffolding
 
-## Validation & helpful errors
+`branchwarden init` generates:
+- `branchwarden.config`
+- `.github/workflows/branchwarden-audit.yml`
+- `.github/workflows/branchwarden-enforce.yml`
 
-Examples:
-- `error: --days must be > 0`
-- `error: --mode must be one of: merged, gone, both`
-- `error: --base cannot be empty`
-- `error: not inside a git repository`
+Use `--workflow audit|enforce|both` and `--force` to overwrite existing files.
+
+## Exit code contract
+
+- `0` success / compliant / no drift
+- `1` usage or runtime error
+- `2` policy violation or actionable drift/failures detected (e.g. `audit`, `apply` preview, `pr-gates`, `doctor`)
 
 ## CI
-
-GitHub Actions workflows:
-- CI on pushes/PRs to `main`
-- Reusable enforcement workflow: `.github/workflows/branchwarden-reusable-enforce.yml`
-- Example scheduled enforcement: `.github/workflows/branchwarden-scheduled-enforce.yml`
-
-Reusable workflow usage (from another workflow):
-
-```yaml
-jobs:
-  enforce:
-    uses: ./.github/workflows/branchwarden-reusable-enforce.yml
-    with:
-      repo: ${{ github.repository }}
-      base: main
-```
 
 Checks:
 - shell syntax check (`bash -n`)
 - end-to-end test script (`./test.sh`)
+- integration-style GitHub command tests via mock mode (`BRANCHWARDEN_MOCK_DIR`)
+
+## Docs
+
+- [CONTRIBUTING.md](./CONTRIBUTING.md)
+- [CHANGELOG.md](./CHANGELOG.md)
+- [SECURITY.md](./SECURITY.md)
 
 ## Roadmap
 
-- [ ] Add `--format json` support for all subcommands (`status`, `stale`, `clean`, `audit`, `apply`, `bulk`, `pr-gates`)
-- [ ] Add `doctor` command (GitHub auth, repo detection, token scopes, actionable fixes)
-- [ ] Add practical Homebrew tap/install script docs
-- [ ] Add versioned `CHANGELOG.md` entries including `v0.1.0` and `v0.2.0`
-- [ ] Add `CONTRIBUTING.md` with local dev/test workflow and commit conventions
-- [ ] Add shell completions (bash/zsh/fish) and documentation
-- [ ] Add integration tests for GitHub-facing commands using mock/stub mode (no network dependency)
-- [ ] Add `branchwarden init` scaffolding (config + workflow template)
-- [ ] Document explicit exit code contract in README
-- [ ] Add `SECURITY.md` vulnerability reporting + support policy
-- [x] Protected-branch presets (`strict`, `balanced`, `solo-dev`) and custom protection patterns
-- [x] Config file support (`branchwarden.config`) for team policy defaults
-- [x] Drift detection (`audit`) against desired policy and live repo state
-- [x] Auto-fix mode (`apply --fix`) to enforce policy quickly
-- [x] GitHub Rulesets support (alongside classic branch protection)
-- [x] Org/bulk mode for repos by topic/pattern
-- [x] PR quality gates (labels, linked issue, reviewer minimums)
-- [x] Improved dry-run planner output (`--plan text|json`)
-- [x] Audit report export (`--output markdown|json|sarif`)
-- [x] Scheduled enforcement via reusable GitHub Action template
+- [x] Add `--format json` support for all subcommands (`status`, `stale`, `clean`, `audit`, `apply`, `bulk`, `pr-gates`)
+- [x] Add `doctor` command (GitHub auth, repo detection, token scopes, actionable fixes)
+- [x] Add practical Homebrew tap/install script docs
+- [x] Add versioned `CHANGELOG.md` entries including `v0.1.0` and `v0.2.0`
+- [x] Add `CONTRIBUTING.md` with local dev/test workflow and commit conventions
+- [x] Add shell completions (bash/zsh/fish) and documentation
+- [x] Add integration tests for GitHub-facing commands using mock/stub mode (no network dependency)
+- [x] Add `branchwarden init` scaffolding (config + workflow template)
+- [x] Document explicit exit code contract in README
+- [x] Add `SECURITY.md` vulnerability reporting + support policy
 
 ## License
 
