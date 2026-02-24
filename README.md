@@ -191,6 +191,16 @@ Checks:
 
 ## Roadmap
 
+- [ ] Add `--format json` support for all subcommands (`status`, `stale`, `clean`, `audit`, `apply`, `bulk`, `pr-gates`)
+- [ ] Add `doctor` command (GitHub auth, repo detection, token scopes, actionable fixes)
+- [ ] Add practical Homebrew tap/install script docs
+- [ ] Add versioned `CHANGELOG.md` entries including `v0.1.0` and `v0.2.0`
+- [ ] Add `CONTRIBUTING.md` with local dev/test workflow and commit conventions
+- [ ] Add shell completions (bash/zsh/fish) and documentation
+- [ ] Add integration tests for GitHub-facing commands using mock/stub mode (no network dependency)
+- [ ] Add `branchwarden init` scaffolding (config + workflow template)
+- [ ] Document explicit exit code contract in README
+- [ ] Add `SECURITY.md` vulnerability reporting + support policy
 - [x] Protected-branch presets (`strict`, `balanced`, `solo-dev`) and custom protection patterns
 - [x] Config file support (`branchwarden.config`) for team policy defaults
 - [x] Drift detection (`audit`) against desired policy and live repo state
