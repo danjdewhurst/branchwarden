@@ -102,11 +102,12 @@ TXT
 
 audit_help() {
   cat <<'TXT'
-Usage: branchwarden audit [--repo <owner/name>] [--base <branch>] [--config <path>]
+Usage: branchwarden audit [--repo <owner/name>] [--base <branch>] [--output text|markdown|json|sarif] [--config <path>]
 
 Flags:
   --repo <owner/name>   GitHub repo (auto-detected from origin remote if omitted)
   --base <branch>       branch to audit protection for (default: main)
+  --output <format>     text|markdown|json|sarif (default: text)
   --config <path>       config file path (default: ./branchwarden.config)
 
 Config keys for policy:
@@ -567,6 +568,7 @@ cmd_clean() {
 cmd_audit() {
   local repo=""
   local base="main"
+  local output="text"
   local config_path="branchwarden.config"
 
   local i=1
@@ -601,6 +603,10 @@ cmd_audit() {
         shift; [[ $# -gt 0 ]] || { echo "error: --base requires a value" >&2; exit 1; }
         base="$1"
         ;;
+      --output)
+        shift; [[ $# -gt 0 ]] || { echo "error: --output requires a value" >&2; exit 1; }
+        output="$1"
+        ;;
       --config)
         shift; [[ $# -gt 0 ]] || { echo "error: --config requires a value" >&2; exit 1; }
         ;;
@@ -622,9 +628,13 @@ cmd_audit() {
     fi
   fi
 
+  case "$output" in
+    text|markdown|json|sarif) ;;
+    *) echo "error: --output must be one of: text, markdown, json, sarif" >&2; exit 1 ;;
+  esac
+
   local rulesets_count
   rulesets_count="$(fetch_matching_rulesets_count "$repo" "$base")"
-  echo "Rulesets matching ${base}: ${rulesets_count}"
 
   local protection_json
   if ! protection_json="$(gh api repos/${repo}/branches/${base}/protection 2>/tmp/branchwarden_audit_err)"; then
@@ -632,39 +642,53 @@ cmd_audit() {
     exit 1
   fi
 
-  python3 - <<'PY' "$protection_json" "$required_checks" "$required_approvals" "$require_conversation_resolution" "$enforce_admins"
+  python3 - <<'PY' "$protection_json" "$required_checks" "$required_approvals" "$require_conversation_resolution" "$enforce_admins" "$output" "$repo" "$base" "$rulesets_count"
 import json, sys
 actual = json.loads(sys.argv[1])
 want_checks = [c.strip() for c in sys.argv[2].split(',') if c.strip()]
 want_approvals = int(sys.argv[3])
 want_conv = sys.argv[4].lower() == 'true'
 want_admins = sys.argv[5].lower() == 'true'
+out = sys.argv[6]
+repo = sys.argv[7]
+base = sys.argv[8]
+rulesets_count = int(sys.argv[9])
 
 act_checks = sorted([(c.get('context') or '') for c in actual.get('required_status_checks', {}).get('checks', [])])
 if not act_checks:
     act_checks = sorted(actual.get('required_status_checks', {}).get('contexts', []))
-
 act_approvals = actual.get('required_pull_request_reviews', {}).get('required_approving_review_count', 0)
 act_conv = actual.get('required_conversation_resolution', {}).get('enabled', False)
 act_admins = actual.get('enforce_admins', {}).get('enabled', False)
 
 drift = []
-if sorted(want_checks) != act_checks:
-    drift.append(f"required checks mismatch (want={want_checks}, got={act_checks})")
-if want_approvals != act_approvals:
-    drift.append(f"required approvals mismatch (want={want_approvals}, got={act_approvals})")
-if want_conv != act_conv:
-    drift.append(f"conversation resolution mismatch (want={want_conv}, got={act_conv})")
-if want_admins != act_admins:
-    drift.append(f"enforce admins mismatch (want={want_admins}, got={act_admins})")
+if sorted(want_checks) != act_checks: drift.append(f"required checks mismatch (want={want_checks}, got={act_checks})")
+if want_approvals != act_approvals: drift.append(f"required approvals mismatch (want={want_approvals}, got={act_approvals})")
+if want_conv != act_conv: drift.append(f"conversation resolution mismatch (want={want_conv}, got={act_conv})")
+if want_admins != act_admins: drift.append(f"enforce admins mismatch (want={want_admins}, got={act_admins})")
 
-if drift:
-    print("DRIFT detected:")
-    for line in drift:
-      print(f"- {line}")
-    sys.exit(2)
+report={"repo":repo,"base":base,"rulesetsMatching":rulesets_count,"drift":drift}
+if out == 'json':
+    print(json.dumps(report))
+elif out == 'markdown':
+    print(f"# branchwarden audit\n\n- repo: `{repo}`\n- base: `{base}`\n- rulesets matching branch: `{rulesets_count}`")
+    if drift:
+      print("\n## Drift\n")
+      [print(f"- {d}") for d in drift]
+    else:
+      print("\nNo drift detected.")
+elif out == 'sarif':
+    sarif={"version":"2.1.0","runs":[{"tool":{"driver":{"name":"branchwarden","rules":[{"id":"branch-protection-drift"}]}},"results":[{"ruleId":"branch-protection-drift","level":"error","message":{"text":d}} for d in drift]}]}
+    print(json.dumps(sarif))
+else:
+    print(f"Rulesets matching {base}: {rulesets_count}")
+    if drift:
+      print("DRIFT detected:")
+      [print(f"- {d}") for d in drift]
+    else:
+      print("No drift: branch protection matches desired policy.")
 
-print("No drift: branch protection matches desired policy.")
+if drift: raise SystemExit(2)
 PY
 }
 

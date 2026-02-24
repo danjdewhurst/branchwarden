@@ -87,6 +87,8 @@ Detect branch protection drift versus desired policy (classic branch protection 
 
 ```bash
 branchwarden audit --repo danjdewhurst/branchwarden --base main
+branchwarden audit --repo danjdewhurst/branchwarden --base main --output markdown
+branchwarden audit --repo danjdewhurst/branchwarden --base main --output sarif
 ```
 
 ### 5) `apply`
@@ -185,7 +187,7 @@ Checks:
 - [x] Org/bulk mode for repos by topic/pattern
 - [x] PR quality gates (labels, linked issue, reviewer minimums)
 - [x] Improved dry-run planner output (`--plan text|json`)
-- [ ] Audit report export (`--output markdown|json|sarif`)
+- [x] Audit report export (`--output markdown|json|sarif`)
 - [ ] Scheduled enforcement via reusable GitHub Action template
 
 ## License

@@ -66,6 +66,13 @@ test_validation_errors() {
   set -e
   [[ $rc -ne 0 ]] || fail "expected clean --plan yaml to fail"
   assert_contains "$out" "--plan must be one of: text, json"
+
+  set +e
+  out="$($TOOL audit --output xml 2>&1)"
+  rc=$?
+  set -e
+  [[ $rc -ne 0 ]] || fail "expected audit --output xml to fail"
+  assert_contains "$out" "--output must be one of: text, markdown, json, sarif"
 }
 
 test_status_and_clean_flow() {
