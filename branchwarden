@@ -1,0 +1,283 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'TXT'
+branchwarden - git branch hygiene CLI
+
+Usage:
+  branchwarden <subcommand> [flags]
+
+Subcommands:
+  status   Audit branch health (merged, gone upstream, ahead/behind)
+  stale    List branches with no commits for N days
+  clean    Delete safe branches (merged/gone) with dry-run by default
+
+Run 'branchwarden <subcommand> --help' for details.
+TXT
+}
+
+status_help() {
+  cat <<'TXT'
+Usage: branchwarden status [--base <ref>]
+
+Flags:
+  --base <ref>   base branch to test merge status against (default: origin/main)
+TXT
+}
+
+stale_help() {
+  cat <<'TXT'
+Usage: branchwarden stale [--days <n>]
+
+Flags:
+  --days <n>   minimum age in days since last commit (default: 30)
+TXT
+}
+
+clean_help() {
+  cat <<'TXT'
+Usage: branchwarden clean [--base <ref>] [--mode merged|gone|both] [--yes]
+
+Flags:
+  --base <ref>             base branch to test merge status against (default: origin/main)
+  --mode merged|gone|both  what to delete (default: both)
+  --yes                    perform deletion (default is dry-run)
+TXT
+}
+
+ensure_git_repo() {
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "error: not inside a git repository" >&2
+    exit 1
+  fi
+}
+
+is_protected_branch() {
+  case "$1" in
+    main|master|develop|dev) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+branch_rows() {
+  git for-each-ref --format='%(refname:short)|%(upstream:track)|%(committerdate:unix)' refs/heads
+}
+
+merged_branches() {
+  local base="$1"
+  git branch --format='%(refname:short)' --merged "$base"
+}
+
+cmd_status() {
+  local base="origin/main"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --base)
+        shift
+        [[ $# -gt 0 ]] || { echo "error: --base requires a value" >&2; exit 1; }
+        base="$1"
+        ;;
+      --help|-h)
+        status_help; exit 0 ;;
+      *)
+        echo "error: unknown flag for status: $1" >&2
+        status_help >&2
+        exit 1
+        ;;
+    esac
+    shift
+  done
+
+  [[ -n "$base" ]] || { echo "error: --base cannot be empty" >&2; exit 1; }
+
+  local merged_set
+  if ! merged_set="$(merged_branches "$base" 2>/tmp/branchwarden_status_err)"; then
+    echo "error: could not evaluate merged branches against '$base': $(cat /tmp/branchwarden_status_err)" >&2
+    exit 1
+  fi
+
+  local merged=0 gone=0 diverged=0
+  echo "Branch status:"
+  while IFS='|' read -r name track _unix; do
+    [[ -n "$name" ]] || continue
+    is_protected_branch "$name" && continue
+
+    local states=()
+    if grep -Fxq "$name" <<<"$merged_set"; then
+      states+=("merged")
+      ((merged+=1))
+    fi
+    if [[ "$track" == *gone* ]]; then
+      states+=("upstream-gone")
+      ((gone+=1))
+    fi
+
+    local ahead=0 behind=0
+    if [[ "$track" =~ ahead[[:space:]]+([0-9]+) ]]; then ahead="${BASH_REMATCH[1]}"; fi
+    if [[ "$track" =~ behind[[:space:]]+([0-9]+) ]]; then behind="${BASH_REMATCH[1]}"; fi
+    if (( ahead > 0 || behind > 0 )); then
+      states+=("ahead:${ahead} behind:${behind}")
+      ((diverged+=1))
+    fi
+
+    if (( ${#states[@]} > 0 )); then
+      printf -- "- %-28s %s\n" "$name" "$(IFS=', '; echo "${states[*]}")"
+    fi
+  done < <(branch_rows)
+
+  echo
+  echo "Summary: merged=${merged} gone=${gone} diverged=${diverged}"
+}
+
+cmd_stale() {
+  local days=30
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --days)
+        shift
+        [[ $# -gt 0 ]] || { echo "error: --days requires a value" >&2; exit 1; }
+        days="$1"
+        ;;
+      --help|-h)
+        stale_help; exit 0 ;;
+      *)
+        echo "error: unknown flag for stale: $1" >&2
+        stale_help >&2
+        exit 1
+        ;;
+    esac
+    shift
+  done
+
+  [[ "$days" =~ ^[0-9]+$ ]] || { echo "error: --days must be a positive integer" >&2; exit 1; }
+  (( days > 0 )) || { echo "error: --days must be > 0" >&2; exit 1; }
+
+  local now cutoff
+  now=$(date +%s)
+  cutoff=$(( now - (days * 86400) ))
+
+  local count=0
+  echo "Stale branches (>${days} days):"
+  while IFS='|' read -r name _track unix; do
+    [[ -n "$name" ]] || continue
+    is_protected_branch "$name" && continue
+    (( unix <= cutoff )) || continue
+    local ts
+    ts=$(date -u -d "@${unix}" +%F)
+    printf -- "- %-28s last-commit=%s\n" "$name" "$ts"
+    ((count+=1))
+  done < <(branch_rows)
+
+  echo "Total stale branches: ${count}"
+}
+
+cmd_clean() {
+  local base="origin/main"
+  local mode="both"
+  local yes="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --base)
+        shift
+        [[ $# -gt 0 ]] || { echo "error: --base requires a value" >&2; exit 1; }
+        base="$1"
+        ;;
+      --mode)
+        shift
+        [[ $# -gt 0 ]] || { echo "error: --mode requires a value" >&2; exit 1; }
+        mode="$1"
+        ;;
+      --yes)
+        yes="true"
+        ;;
+      --help|-h)
+        clean_help; exit 0 ;;
+      *)
+        echo "error: unknown flag for clean: $1" >&2
+        clean_help >&2
+        exit 1
+        ;;
+    esac
+    shift
+  done
+
+  [[ -n "$base" ]] || { echo "error: --base cannot be empty" >&2; exit 1; }
+  case "$mode" in
+    merged|gone|both) ;;
+    *) echo "error: --mode must be one of: merged, gone, both" >&2; exit 1 ;;
+  esac
+
+  local merged_set
+  if ! merged_set="$(merged_branches "$base" 2>/tmp/branchwarden_clean_err)"; then
+    echo "error: could not evaluate merged branches against '$base': $(cat /tmp/branchwarden_clean_err)" >&2
+    exit 1
+  fi
+
+  local candidates=()
+  while IFS='|' read -r name track _unix; do
+    [[ -n "$name" ]] || continue
+    is_protected_branch "$name" && continue
+
+    local should_delete="false"
+    if [[ "$mode" == "merged" || "$mode" == "both" ]]; then
+      grep -Fxq "$name" <<<"$merged_set" && should_delete="true"
+    fi
+    if [[ "$mode" == "gone" || "$mode" == "both" ]]; then
+      [[ "$track" == *gone* ]] && should_delete="true"
+    fi
+
+    [[ "$should_delete" == "true" ]] && candidates+=("$name")
+  done < <(branch_rows)
+
+  if (( ${#candidates[@]} == 0 )); then
+    echo "No branches matched cleanup criteria."
+    return
+  fi
+
+  if [[ "$yes" != "true" ]]; then
+    echo "Dry run. Pass --yes to delete these branches:"
+    printf -- "- %s\n" "${candidates[@]}"
+    return
+  fi
+
+  local b
+  for b in "${candidates[@]}"; do
+    git branch -D "$b" >/dev/null
+    echo "Deleted ${b}"
+  done
+}
+
+main() {
+  if [[ $# -lt 1 ]]; then
+    usage
+    exit 2
+  fi
+
+  local sub="$1"; shift
+  case "$sub" in
+    help|-h|--help)
+      usage
+      ;;
+    status)
+      ensure_git_repo
+      cmd_status "$@"
+      ;;
+    stale)
+      ensure_git_repo
+      cmd_stale "$@"
+      ;;
+    clean)
+      ensure_git_repo
+      cmd_clean "$@"
+      ;;
+    *)
+      echo "error: unknown subcommand '$sub'" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
