@@ -99,6 +99,12 @@ test_status_and_clean_flow() {
   )
 }
 
+test_audit_help() {
+  local out
+  out="$($TOOL audit --help)"
+  assert_contains "$out" "Usage: branchwarden audit"
+}
+
 test_presets_and_config() {
   local repo
   repo="$(setup_repo)"
@@ -128,5 +134,6 @@ CFG
 echo "Running tests..."
 test_validation_errors
 test_status_and_clean_flow
+test_audit_help
 test_presets_and_config
 echo "All tests passed."
