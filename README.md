@@ -83,7 +83,7 @@ Modes:
 
 ### 4) `audit`
 
-Detect branch protection drift versus desired policy:
+Detect branch protection drift versus desired policy (classic branch protection + matching rulesets visibility):
 
 ```bash
 branchwarden audit --repo danjdewhurst/branchwarden --base main
@@ -163,7 +163,7 @@ Checks:
 - [x] Config file support (`branchwarden.config`) for team policy defaults
 - [x] Drift detection (`audit`) against desired policy and live repo state
 - [x] Auto-fix mode (`apply --fix`) to enforce policy quickly
-- [ ] GitHub Rulesets support (alongside classic branch protection)
+- [x] GitHub Rulesets support (alongside classic branch protection)
 - [ ] Org/bulk mode for repos by topic/pattern
 - [ ] PR quality gates (labels, linked issue, reviewer minimums)
 - [x] Improved dry-run planner output (`--plan text|json`)
