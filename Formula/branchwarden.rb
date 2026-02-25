@@ -1,8 +1,8 @@
 class Branchwarden < Formula
   desc "Git branch hygiene and policy enforcement CLI"
   homepage "https://github.com/danjdewhurst/branchwarden"
-  url "https://github.com/danjdewhurst/branchwarden/archive/refs/tags/v0.2.0.tar.gz"
-  sha256 "94dd4f8b81ffc5ea3da108c74711f220ac5311192f46b62d01901dc31e27d674"
+  url "https://github.com/danjdewhurst/branchwarden/archive/refs/tags/v0.3.0.tar.gz"
+  sha256 "d37ee6fe39d4aa4cc9e95114f75d1c17a5d1a23c962fe04e50b4b44985453512"
   license "MIT"
 
   def install
